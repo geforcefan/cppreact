@@ -1,0 +1,150 @@
+<rml>
+<head>
+<title>cppreact todos</title>
+<style>
+body {
+	--foreground: #e6e8eeff;
+	--foreground-dim: #6b7280ff;
+
+	--background: #14161b00;
+	--panel: #1b1e24cc;
+	--panel-hover: #21252de6;
+	--panel-glass: #1b1e2480;
+	--border: #ffffff1a;
+	--ring: #ffffff33;
+
+	--accent: #45a377ff;
+	--danger: #ef4444ff;
+
+	--radius: 8dp;
+	--animation-fast: 0.15s linear-in-out;
+	--blur-soft: blur(10px);
+	--blur-heavy: blur(40px);
+
+	width: 100%;
+	height: 100%;
+}
+
+div, h1, ul, li, footer {
+	display: block;
+}
+
+#root {
+	display: flex;
+	justify-content: center;
+	width: 100%;
+	height: 100%;
+	font-family: LatoLatin;
+	font-size: 17dp;
+	color: var(--foreground);
+	background-color: var(--background);
+}
+
+.card {
+	width: 360dp;
+	margin-top: 48dp;
+	margin-bottom: 48dp;
+	padding: 28dp;
+	background-color: #14161bb3;
+	backdrop-filter: var(--blur-soft);
+	border: 1dp #ffffff14;
+	border-radius: 16dp;
+}
+
+h1 {
+	font-size: 40dp;
+	font-weight: bold;
+	text-align: center;
+	margin-bottom: 24dp;
+}
+
+input {
+	display: block;
+	box-sizing: border-box;
+	width: 100%;
+	padding: 12dp;
+	color: var(--foreground);
+	background-color: var(--panel-glass);
+	backdrop-filter: var(--blur-heavy);
+	border: 1dp var(--border);
+	border-radius: var(--radius);
+	cursor: text;
+	transition: border-color var(--animation-fast);
+}
+
+input:focus {
+	border-color: var(--accent);
+}
+
+ul {
+	margin-top: 16dp;
+}
+
+.todo {
+	display: flex;
+	align-items: center;
+	padding: 10dp 12dp;
+	margin-top: 8dp;
+	background-color: var(--panel);
+	border: 1dp var(--border);
+	border-radius: var(--radius);
+	transition: background-color var(--animation-fast);
+}
+
+.todo:hover {
+	background-color: var(--panel-hover);
+}
+
+.status {
+	display: block;
+	width: 18dp;
+	height: 18dp;
+	border: 2dp var(--ring);
+	border-radius: 999dp;
+	margin-right: 12dp;
+	cursor: pointer;
+	transition: background-color border-color var(--animation-fast);
+}
+
+.status:hover {
+	border-color: var(--accent);
+}
+
+.todo.done .status {
+	background-color: var(--accent);
+	border-color: var(--accent);
+}
+
+.title {
+	flex-grow: 1;
+	cursor: pointer;
+}
+
+.todo.done .title {
+	color: var(--foreground-dim);
+	text-decoration: line-through;
+}
+
+.remove {
+	color: var(--foreground-dim);
+	cursor: pointer;
+	padding: 0dp 12dp;
+	transition: color var(--animation-fast);
+}
+
+.remove:hover {
+	color: var(--danger);
+}
+
+footer {
+	margin-top: 16dp;
+	color: var(--foreground);
+	font-size: 14dp;
+	text-align: center;
+}
+</style>
+</head>
+<body>
+	<div id="root"/>
+</body>
+</rml>

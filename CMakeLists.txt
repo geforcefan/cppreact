@@ -1,0 +1,18 @@
+cmake_minimum_required(VERSION 3.24)
+project(cppreact VERSION 0.1.0 LANGUAGES CXX)
+
+add_library(cppreact INTERFACE)
+add_library(cppreact::cppreact ALIAS cppreact)
+
+target_include_directories(cppreact INTERFACE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
+
+target_compile_features(cppreact INTERFACE cxx_std_20)
+
+option(CPPREACT_TESTS "build the cppreact tests" ${PROJECT_IS_TOP_LEVEL})
+
+if(CPPREACT_TESTS)
+  enable_testing()
+  add_subdirectory(tests)
+endif()
