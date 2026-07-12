@@ -1,66 +1,157 @@
-#include <cassert>
-#include <cstdio>
 #include <functional>
 #include <string>
+#include <vector>
 
-#include "cppreact/hooks.hpp"
+#include <catch2/catch_test_macros.hpp>
+
+#include "cppreact/hooks/hooks.hpp"
 #include "cppreact/render.hpp"
-#include "cppreact/vnode.hpp"
-#include "cppreact/renderers/test.hpp"
+#include "cppreact/hosts/html_string.hpp"
+#include "cppreact/vnode/tags.hpp"
+#include "cppreact/vnode/create.hpp"
+#include "cppreact/component/memo.hpp"
 
 using namespace cppreact;
+using namespace cppreact::tags;
 
-static int stable_renders = 0;
-static int changing_renders = 0;
-static int plain_renders = 0;
-static std::function<void()> bump_parent;
+static int foo_calls = 0;
+static int comparer_calls = 0;
+static bool comparer_saw_empty = false;
+static bool previous_foo = false;
+static bool next_foo = true;
+static std::function<void()> update;
+static FunctionComponent memoized = nullptr;
+static StateSetter<std::string> set_selected;
 
-static VNode StableBody(const Props&) {
-  ++stable_renders;
-  return h("span", {}, "s");
-}
+TEST_CASE("memo") {
+    hosts::HtmlStringHost renderer;
+    Container scratch = renderer.create_container();
 
-static VNode ChangingBody(const Props& props) {
-  ++changing_renders;
-  return h("span", {}, std::to_string(static_cast<int>(props.get<double>("value").value_or(0))));
-}
+    SECTION("should work with function components") {
+        foo_calls = 0;
 
-static VNode PlainBody(const Props&) {
-  ++plain_renders;
-  return h("span", {}, "p");
-}
+        memoized = memo([](const Object&) -> VNode {
+            ++foo_calls;
+            return Text({}, "Hello World");
+        });
 
-static const Component StableMemo = memo(StableBody);
-static const Component ChangingMemo = memo(ChangingBody);
+        const FunctionComponent App = [](const Object&) -> VNode {
+            auto [version, set_version] = use_state<int>(0);
+            update = [set_version = set_version, version = version] { set_version(version + 1); };
+            return memoized({});
+        };
 
-static VNode Parent(const Props&) {
-  auto [tick, set_tick] = use_state<int>(0);
-  bump_parent = [set_tick, tick] { set_tick(tick + 1); };
-  return h("div", {}, StableMemo({{"label", std::string("x")}}),
-           ChangingMemo({{"value", static_cast<double>(tick)}}), h(PlainBody, {}));
-}
+        render(App({}), scratch);
+        REQUIRE(foo_calls == 1);
 
-int main() {
-  renderers::TestRenderer renderer;
-  Container root = renderer.create_container();
-  render(h(Parent, {}), root);
-  assert(stable_renders == 1 && changing_renders == 1 && plain_renders == 1);
-  std::printf("PASS initial render mounts every child once\n");
+        update();
+        flush();
 
-  bump_parent();
-  flush();
-  assert(stable_renders == 1);
-  assert(changing_renders == 2);
-  assert(plain_renders == 2);
-  assert(renderer.serialize() == "<div><span>s</span><span>1</span><span>p</span></div>");
-  std::printf("PASS memo bails on unchanged props, re-renders on a changed prop, plain always re-renders\n");
+        REQUIRE(foo_calls == 1);
+    }
 
-  bump_parent();
-  flush();
-  assert(stable_renders == 1 && changing_renders == 3 && plain_renders == 3);
-  assert(renderer.serialize() == "<div><span>s</span><span>2</span><span>p</span></div>");
-  std::printf("PASS memo stays bailed while the changed child keeps updating in place\n");
+    SECTION("should support custom comparer functions") {
+        comparer_calls = 0;
+        comparer_saw_empty = false;
 
-  std::printf("ALL memo tests passed\n");
-  return 0;
+        memoized = memo([](const Object&) -> VNode { return Text({}, "Hello World"); },
+                        [](const Object& previous, const Object& next) {
+                            ++comparer_calls;
+                            comparer_saw_empty = previous.size() == 0 && next.size() == 0;
+                            return true;
+                        });
+
+        const FunctionComponent App = [](const Object&) -> VNode {
+            auto [version, set_version] = use_state<int>(0);
+            update = [set_version = set_version, version = version] { set_version(version + 1); };
+            return memoized({});
+        };
+
+        render(App({}), scratch);
+
+        update();
+        flush();
+
+        REQUIRE(comparer_calls == 1);
+        REQUIRE(comparer_saw_empty);
+    }
+
+    SECTION("should rerender when custom comparer returns false") {
+        foo_calls = 0;
+
+        const FunctionComponent App = memo(
+            [](const Object&) -> VNode {
+                ++foo_calls;
+                return Text({}, "Hello World");
+            },
+            [](const Object&, const Object&) { return false; });
+
+        render(App({}), scratch);
+        REQUIRE(foo_calls == 1);
+
+        render(App({{"foo", "bar"}}), scratch);
+        REQUIRE(foo_calls == 2);
+    }
+
+    SECTION("should pass props and nextProps to the comparer") {
+        previous_foo = false;
+        next_foo = true;
+
+        const FunctionComponent App = memo(
+            [](const Object&) -> VNode { return View({}, "foo"); },
+            [](const Object& previous, const Object& next) {
+                previous_foo = previous.get<bool>("foo",false);
+                next_foo = next.get<bool>("foo",false);
+                return false;
+            });
+
+        render(App({{"foo", true}}), scratch);
+        render(App({{"foo", false}}), scratch);
+
+        REQUIRE(previous_foo == true);
+        REQUIRE(next_foo == false);
+    }
+
+    SECTION("should nest without errors") {
+        const FunctionComponent App =
+            memo(memo([](const Object&) -> VNode { return View({}, "foo"); }));
+
+        render(App({}), scratch);
+        REQUIRE(renderer.inner_html() == "<view>foo</view>");
+    }
+
+    SECTION("should not unnecessarily reorder children #2895") {
+        memoized = memo([](const Object& props) -> VNode {
+            std::string name = props.get<std::string>("name","");
+            bool is_selected = props.get<bool>("is_selected",false);
+            Callback handle_click{[name](const Event&) { set_selected(name); }};
+            if (is_selected) {
+                return View({{"class", "selected"}, {"on_click", handle_click}}, name);
+            }
+            return View({{"on_click", handle_click}}, name);
+        });
+
+        const FunctionComponent List = [](const Object&) -> VNode {
+            auto [selected, set_state] = use_state<std::string>("");
+            set_selected = set_state;
+            std::vector<std::string> names{"A", "B", "C", "D"};
+            std::vector<VNode> items;
+            for (const std::string& name : names) {
+                items.push_back(memoized({{"key", name},
+                                          {"name", name},
+                                          {"is_selected", name == selected}}));
+            }
+            return View({}, std::move(items));
+        };
+
+        render(List({}), scratch);
+        REQUIRE(renderer.inner_html() == "<view><view>A</view><view>B</view><view>C</view><view>D</view></view>");
+
+        DomNode third = renderer.parent_node(renderer.find_by_text("C"));
+        renderer.dispatch_event(third, "click");
+        flush();
+
+        REQUIRE(renderer.inner_html() ==
+                "<view><view>A</view><view>B</view><view class=\"selected\">C</view><view>D</view></view>");
+    }
 }

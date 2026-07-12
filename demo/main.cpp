@@ -7,9 +7,8 @@
 #include <RmlUi/Core.h>
 #include <RmlUi_Backend.h>
 
-#include "cppreact/hooks.hpp"
-#include "cppreact/renderers/rml.hpp"
-#include "cppreact/tags.hpp"
+#include "cppreact/cppreact.hpp"
+#include "cppreact/hosts/rml.hpp"
 
 #include "cube.hpp"
 
@@ -47,43 +46,44 @@ auto remove_todo(int id) {
   };
 }
 
-const Component TodoItem = [](const Props& props) -> VNode {
-  auto title = props.get<std::string>("title").value_or("");
-  auto done = props.get<bool>("done").value_or(false);
-  auto toggle = props.get<EventHandler>("on_toggle").value_or(EventHandler{});
-  auto remove = props.get<EventHandler>("on_remove").value_or(EventHandler{});
+const FunctionComponent TodoItem = [](const Object& props) -> VNode {
+  auto title = props.get<std::string>("title","");
+  auto done = props.get<bool>("done",false);
+  auto toggle = props.get<Callback>("on_toggle",Callback{});
+  auto remove = props.get<Callback>("on_remove",Callback{});
 
-  return li({{"class", done ? "todo done" : "todo"}},
-    span({{"class", "status"}, {"on_click", toggle}}),
-    span({{"class", "title"}, {"on_click", toggle}}, title),
-    button({{"class", "remove"}, {"on_click", remove}}, "x"));
+  return View({{"class", done ? "todo done" : "todo"}},
+    Text({{"class", "status"}, {"on_click", toggle}}),
+    Text({{"class", "title"}, {"on_click", toggle}}, title),
+    Text({{"class", "remove"}, {"on_click", remove}}, "x"));
 };
 
-const Component App = [](const Props&) -> VNode {
+const FunctionComponent App = [](const Object&) -> VNode {
   auto [todos, set_todos] = use_state<std::vector<Todo>>({});
   auto [draft, set_draft] = use_state<std::string>("");
 
   auto open = std::count_if(todos.begin(), todos.end(),
                             [](const Todo& todo) { return !todo.done; });
 
-  return div({{"class", "card"}},
-    h1({}, "todos"),
-    input({{"type", "text"}, {"value", draft},
+  return View({{"class", "card"}},
+    View({{"class", "heading"}}, "todos"),
+    Input({{"type", "text"}, {"value", draft},
            {"on_key_down", [=](const Event& event) {
-              if (event.key != "Enter" || draft.empty()) return;
+              if (event.key != "enter" || draft.empty()) return;
               set_todos(create_todo(draft));
               set_draft("");
             }},
            {"on_change", [=](const Event& event) { set_draft(event.value); }}}),
-    ul({}, map(todos, [=](const Todo& todo) {
+    View({{"class", "todos"}}, map(todos, [=](const Todo& todo) {
       return TodoItem({{"key", std::to_string(todo.id)},
                        {"title", todo.title},
                        {"done", todo.done},
                        {"on_toggle", [=](const Event&) { set_todos(toggle_todo(todo.id)); }},
                        {"on_remove", [=](const Event&) { set_todos(remove_todo(todo.id)); }}});
     })),
-    when(todos.empty(), footer({}, "nothing to do, add one above")),
-    when(!todos.empty(), [open] { return footer({}, std::to_string(open) + " open"); }));
+    when(todos.empty(), View({{"class", "footer"}}, "nothing to do, add one above")),
+    when(!todos.empty(),
+         [open] { return View({{"class", "footer"}}, open, " open"); }));
 };
 
 static Rml::Context* refresh_context = nullptr;
@@ -117,8 +117,8 @@ int main() {
   Rml::ElementDocument* document = context->LoadDocument(APP_DOCUMENT);
   document->Show();
 
-  renderers::RmlRenderer renderer;
-  Container container = renderer.create_container(document->GetElementById("root"));
+  hosts::RmlHost host;
+  Container container = host.create_container(document->GetElementById("root"));
   render(App({}), container);
 
   demo::Cube cube;

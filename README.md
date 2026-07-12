@@ -1,6 +1,6 @@
 <h1 align="center">c++react</h1>
 
-<p align="center">React in C++, probably for your games, CAD editors or other crazy stuff, like a GUI inside Unreal Engine 5 (I did). Function components, hooks, and a virtual DOM that renders into whatever renderer you give it. Because your CAD software also deserved a pretty GUI.</p>
+<p align="center">React in C++, probably for your games, CAD editors or other crazy stuff, like a GUI inside Unreal Engine 5 (I did). Function components, hooks, and a virtual DOM that renders into whatever host you give it. Because your CAD software also deserved a pretty GUI.</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/status-alpha-orange" alt="alpha">
@@ -19,9 +19,9 @@
 
 c++react is a C++ library for building user interfaces, with the React model: components, hooks, and
 a virtual DOM that updates only what changed. It does not render on its own. You point it at a
-renderer and it drives that, so the same components can run on a browser, a game engine, or anything
+host and it drives that, so the same components can run on a browser, a game engine, or anything
 else. The [demo](#demo) below uses [RmlUi](https://github.com/mikke89/RmlUi), the great HTML and CSS
-like renderer for C++ that draws through OpenGL and many other targets (and yes, I implemented an
+like library for C++ that draws through OpenGL and many other targets (and yes, I implemented an
 Unreal Engine 5 backend for RmlUi, stay tuned, that will be open sourced too).
 
 What you get:
@@ -29,7 +29,7 @@ What you get:
 - the hooks you expect (`use_state`, `use_effect`, `use_memo` and friends, all listed below)
 - keyed lists, context, portals, synthetic events
 - native elements for the parts that draw their own pixels
-- batched rendering: `set_state` queues, one `flush()` per frame drains it
+- batched rendering: `set_state` queues, `flush` drains it
 - no dependencies, C++20, builds with `-fno-exceptions -fno-rtti`
 
 ## Using it
@@ -46,7 +46,10 @@ target_link_libraries(your_app PRIVATE cppreact::cppreact)
 
 Or copy the `include/` directory into your project, there is nothing to compile.
 
-The library alone is useless: it renders nothing without a render target.
+```cpp
+#include "cppreact/cppreact.hpp"
+#include "cppreact/hosts/rml.hpp"   // the host you render through
+```
 
 ## Demo
 
@@ -54,7 +57,7 @@ A demo says more than a thousand words. `demo/` is the todo app from the animati
 complete desktop app:
 
 - a GLFW window with OpenGL
-- RmlUi on top as the renderer for c++react
+- RmlUi on top as the host for c++react
 - CMake fetches GLFW and RmlUi
 - FreeType comes from the system (`brew install freetype` on macOS, `apt install libfreetype-dev` on Linux)
 
@@ -71,102 +74,109 @@ carries a couple of bug fixes of mine that are not merged yet (open PRs
 
 ## Components
 
-A component is a function `VNode(const Props&)`. Wrap it in `Component` and it calls like a tag:
+A component is a function `VNode(const Object&)`. Wrap it in `FunctionComponent` and use it like
+any element, called with props and children:
 
 ```cpp
-#include "cppreact/hooks.hpp"
-#include "cppreact/tags.hpp"
+#include "cppreact/cppreact.hpp"
 
 using namespace cppreact;
 using namespace cppreact::tags;
 
-const Component Counter = [](const Props& props) -> VNode {
-  auto label = props.get<std::string>("label").value_or("count");
+const FunctionComponent Counter = [](const Object& props) -> VNode {
+  auto label = props.get<std::string>("label", "count");
+  std::optional<double> maximum = props.get<double>("maximum");
+
   auto [count, set_count] = use_state<int>(0);
 
-  auto increment = [=](const Event&) { set_count(count + 1); };
+  auto increment = [=](const Event&) {
+    if (maximum && count >= *maximum) return;
+    set_count(count + 1);
+  };
 
-  return div({{"class", "counter"}},
-    span({}, label + ": " + std::to_string(count)),
-    button({{"on_click", increment}}, "increment"));
+  return View({{"class", "counter"}},
+    Text({}, label, ": ", count),
+    View({{"on_click", increment}}, "increment"));
 };
 ```
 
-A click runs the handler, `set_count` re-renders, and the diff touches only the text node that
-changed. Components go inside components:
+A click runs the handler and `set_count` re-renders. Components go inside components:
 
 ```cpp
-const Component App = [](const Props&) -> VNode {
-  return div({{"class", "app"}},
+const FunctionComponent App = [](const Object&) -> VNode {
+  return View({{"class", "app"}},
     Counter({{"label", "left"}}),
-    Counter({{"label", "right"}}));
+    Counter({{"label", "right"}, {"maximum", 10.0}}));
 };
 ```
 
 A component renders the children it was given with `children()`:
 
 ```cpp
-const Component Card = [](const Props&) -> VNode {
-  return div({{"class", "card"}}, children());
+const FunctionComponent Card = [](const Object&) -> VNode {
+  return View({{"class", "card"}}, children());
 };
 
-Card({}, span({}, "inside"));
+Card({}, Text({}, "inside"));
 ```
 
 ## Elements
 
-Build elements with the tag helpers from `tags.hpp`:
+These components exist by default: `View`, `Text`, `Input`, `Textarea`, `Image`.
+
+Children are variadic and mix freely: strings and numbers turn into text nodes, elements and
+components nest, `nullptr` renders nothing.
 
 ```cpp
-div({{"class", "row"}},
-  span({}, "hi"),
-  button({{"on_click", handler}}, "ok"));
+View({{"class", "row"}},
+  "hello",
+  42,
+  6.5,
+  Text({}, "an element"),
+  Counter({{"label", "a component"}}),
+  nullptr);
 ```
 
-These helpers exist: `div`, `span`, `p`, `button`, `a`, `ul`, `ol`, `li`, `input`, `img`, `label`,
-`section`, `header`, `footer`, `nav`, `h1`, `h2`, `h3`, `strong`, `em`, `pre`, `code`.
-
-Children are variadic. Strings and numbers turn into text nodes. `key` and `ref` are read out of
-`props`.
-
-If a tag is dynamic, or the shortcuts are not your style, use `h()`, the primitive every helper
-calls:
+If you need your own tag names, call `h()` directly:
 
 ```cpp
-h(std::string tag, Props props = {}, children...);
-h(ComponentFunction component, Props props = {}, children...);
-fragment(children...);
+h("chart", {{"class", "wide"}});
 ```
 
 ## Props
 
-Props are an untyped bag so `h()` can carry anything. You read them with a typed accessor:
+Props are an untyped `Object`, so a component can carry anything:
 
 ```cpp
-props.get<std::string>("label");
-props.get<std::string>("label").value_or("fallback");
-props.has("on_click");
-props.find("count");
+View({
+  {"class", "row"},
+  {"count", 3.0},
+  {"on_click", [](const Event&) { submit(); }},
+  {"style", {{"width", "50%"}, {"color", "red"}}},
+  {"model", RawPayload{model}},
+});
 ```
 
-`get<T>` returns a `std::optional<T>`, `value_or` gives it a default, `has` is a presence check, and
-`find` hands back a `const Value*` or `nullptr`.
-
-Literals just work: `{{"class", "row"}}` is a string, `{{"count", 3.0}}` a double. `style` is an
-object, a `Style` list of property and value pairs, not a string:
+Read them typed:
 
 ```cpp
-div({{"style", Style{{"width", "50%"}, {"color", "red"}}}});
+std::string label_with_fallback = props.get<std::string>("label", "fallback");
+std::optional<double> optional_minimum = props.get<double>("minimum");
+auto on_change = props.get<void(double)>("on_change", {});
+const Value* raw_count = props.get("count");
 ```
 
-`Payload` holds a `shared_ptr<void>` for values you pass through untouched, a context value or a
-pointer to one of your own objects.
+- a `Callback` compares by identity: the same one again changed nothing, a fresh one did
+- a `RawPayload` too, c++react never looks inside
 
 ## Hooks
 
-Call them at the top of a component, same order every render. A dependency list is built with
-`deps(...)` and compared item by item. `deps()` means run once; leaving the argument out means run
-every render.
+Call them at the top of a component, same order every render. Dependencies are a brace list of
+`Value`s:
+
+- `{a, b}` reruns when one changed
+- `{}` runs once, on mount
+- no argument runs every render
 
 ### use_state
 
@@ -179,41 +189,42 @@ set_count([](const int& value) { return value + 1; });
 auto [rows, set_rows] = use_state<Rows>([] { return load_rows(); });
 ```
 
-The setter takes a value or an updater lambda. It re-renders the component, and skips the render when
-the new value compares equal to the old one (for types with `operator==`). A call after unmount is
-ignored. Pass a function as the initial value and it runs once, on mount.
+The setter takes a value or an updater lambda. It re-renders the component and skips the render
+when nothing changed. A call after unmount is ignored. Pass a function as the initial value and it
+runs once, on mount.
 
 ### use_reducer
 
 A store: the reducer takes the current state and an action and returns the next state, `dispatch`
-feeds it an action:
+feeds it one:
 
 ```cpp
-enum class CounterAction { increment, decrement, reset };
+struct IncrementAction { int amount; };
+struct ResetAction {};
+using CounterAction = std::variant<IncrementAction, ResetAction>;
 
-int counter_reduce(const int& count, const CounterAction& action) {
-  switch (action) {
-    case CounterAction::increment: return count + 1;
-    case CounterAction::decrement: return count - 1;
-    case CounterAction::reset:     return 0;
+int counter_reducer(const int& count, const CounterAction& action) {
+  if (const IncrementAction* increment = std::get_if<IncrementAction>(&action)) {
+    return count + increment->amount;
+  }
+  if (std::get_if<ResetAction>(&action)) {
+    return 0;
   }
   return count;
 }
 
-const Component Counter = [](const Props&) -> VNode {
-  auto [count, dispatch] = use_reducer<int, CounterAction>(counter_reduce, 0);
+const FunctionComponent Counter = [](const Object&) -> VNode {
+  auto [count, dispatch] = use_reducer<int, CounterAction>(counter_reducer, 0);
 
-  return div({},
-    button({{"on_click", [=](const Event&) { dispatch(CounterAction::decrement); }}}, "-"),
-    span({}, std::to_string(count)),
-    button({{"on_click", [=](const Event&) { dispatch(CounterAction::increment); }}}, "+"));
+  return View({},
+    Text({}, count),
+    View({{"on_click", [=](const Event&) { dispatch(IncrementAction{10}); }}}, "+10"),
+    View({{"on_click", [=](const Event&) { dispatch(ResetAction{}); }}}, "reset"));
 };
 ```
 
-An action can carry data too, use a `struct` (or a `std::variant` of them) instead of an enum.
-`dispatch` skips the render when the reducer returns an equal state, and always runs the reducer you
-passed on the latest render. Pass a function instead of the initial value and it runs once, on mount:
-`use_reducer<int, CounterAction>(counter_reduce, [] { return load_count(); })`.
+`dispatch` skips the render when the reducer returns an equal state. As with `use_state`, a
+function as the initial value runs once, on mount.
 
 ### use_effect
 
@@ -221,21 +232,22 @@ passed on the latest render. Pass a function instead of the initial value and it
 use_effect([id]() -> CleanupFunction {
   subscribe(id);
   return [id] { unsubscribe(id); };
-}, deps(id));
+}, {id});
 ```
 
 Runs after commit when a dependency changed. The effect returns its cleanup, which runs before the
-next run and on unmount; return an empty `CleanupFunction` when there is nothing to clean up.
+next run and on unmount. Return an empty `CleanupFunction` when there is nothing to clean up.
 
 ### use_layout_effect
 
 Same signature as `use_effect`, runs first in the commit, before the passive effects. For reading
-layout right after the tree changed.
+layout right after the tree changed: layout is settled when a layout effect runs, read it without
+forcing anything yourself.
 
 ### use_memo
 
 ```cpp
-auto total = use_memo<int>([rows] { return sum(rows); }, deps(rows.size()));
+auto total = use_memo<int>([rows] { return sum(rows); }, {static_cast<double>(rows.size())});
 ```
 
 Recomputes only when a dependency changed.
@@ -243,9 +255,11 @@ Recomputes only when a dependency changed.
 ### use_callback
 
 ```cpp
-EventHandler select = use_callback<EventHandler>(
-  [id](const Event&) { open(id); }, deps(id));
+auto select = use_callback(Callback{[id](const Event&) { open(id); }}, {id});
 ```
+
+Returns the same `Callback` until a dependency changes, so dependency lists and `memo` see a
+stable identity.
 
 ### use_ref
 
@@ -254,7 +268,7 @@ int& render_count = use_ref<int>(0);
 render_count += 1;
 ```
 
-A mutable slot that survives re-renders and does not trigger one.
+A mutable value that survives re-renders and does not trigger one.
 
 ### use_context
 
@@ -272,34 +286,50 @@ auto paused = use_sync_external_store(
   [] { return store.paused(); });
 ```
 
-Subscribes to an external store and re-renders when the snapshot changes (compared with
-`operator==`). `subscribe(on_change)` returns the unsubscribe.
+Subscribes to an external store and re-renders when the snapshot changes.
+`subscribe(on_change)` returns the unsubscribe.
 
-### use_node_ref and use_measure
+### References
+
+References come in two forms, and the `ref` prop takes either one directly. The object form is
+`ReferenceObject`: copies all point at the same node, `current()` reads it. Hold it in
+`use_ref` so it survives re-renders:
 
 ```cpp
-NodeRef ref = use_node_ref();
-Box box = use_measure(ref);
+ReferenceObject reference = use_ref(ReferenceObject{});
 
-return div({{"ref", ref.prop()}, {"class", "panel"}}, "...");
+return View({{"ref", reference}, {"class", "panel"}}, "...");
 ```
 
-`ref` reaches the created node (`ref.current()`), and `use_measure` tracks that node's box across
-re-renders.
-
-On an element, `ref` attaches to the created node. On a component, `ref` is just another prop: the
-component reads it and passes it on to whichever element it wants to expose:
+The function form is a `Callback` taking a `DomNode`. It is called with the node on attach
+and with `null_dom_node` on detach:
 
 ```cpp
-const Component Field = [](const Props& props) -> VNode {
-  Props inner{{"class", "field"}, {"type", "text"}};
-  if (auto ref = props.get<Payload>("ref")) inner.set("ref", *ref);
+View({{"ref", Callback{[](DomNode node) { ... }}}});
+```
 
-  return input(std::move(inner));
+References compare by identity: a stable reference of either form never re-fires across
+re-renders and lets `memo` bail, an inline one re-fires every render. On unmount an object
+reference is only nulled while it still points at the dying node.
+
+`reference.current()` reaches the created node. Anything host-specific, measuring a box,
+reading the display density, imperative animation, goes through the node the reference hands you:
+resolve it with `Host::native_element(node)` and talk to your toolkit directly.
+
+On an element, `ref` attaches to the created node. On a component, `ref` is just another prop.
+The component copies it onto whichever element it wants to expose, without
+caring which form it holds:
+
+```cpp
+const FunctionComponent Field = [](const Object& props) -> VNode {
+  Object inner{{"class", "field"}, {"type", "text"}};
+  if (const Value* reference = props.get("ref")) inner.set("ref", *reference);
+
+  return Input(std::move(inner));
 };
 
-NodeRef ref = use_node_ref();
-Field({{"ref", ref.prop()}});
+ReferenceObject reference = use_ref(ReferenceObject{});
+Field({{"ref", reference}});
 ```
 
 A component that ignores its `ref` prop attaches nothing, exactly like a component that ignores any
@@ -309,7 +339,7 @@ other prop.
 
 ```cpp
 use_document_event("key_down", [cancel](const Event& event) {
-  if (event.key == "Escape") cancel();
+  if (event.key == "escape") cancel();
 });
 ```
 
@@ -335,7 +365,7 @@ Give items a `key`. Add, remove and reorder then keep the matching instances and
 only what actually moved. The `map` helper turns a range into a list of nodes:
 
 ```cpp
-div({{"class", "list"}}, map(items, [](const auto& item) {
+View({{"class", "list"}}, map(items, [](const auto& item) {
   return Row({{"key", item.id}, {"label", item.name}});
 }));
 
@@ -350,9 +380,9 @@ map(items, [](const auto& item, std::size_t i) {
 skip the work when it is false:
 
 ```cpp
-div({{"class", "row"}},
-  span({}, label),
-  when(expanded, [] { return div({{"class", "detail"}}, "more"); }));
+View({{"class", "row"}},
+  Text({}, label),
+  when(expanded, [] { return View({{"class", "detail"}}, "more"); }));
 ```
 
 ## Events
@@ -369,42 +399,52 @@ A handler is `void(const Event&)`, wired through a prop named for the event:
 Append `_capture` to listen in the capture phase:
 
 ```cpp
-div({{"on_click", bubbled}, {"on_click_capture", first}},
-  button({{"on_click", pressed}}, "ok"));
+View({{"on_click", bubbled}, {"on_click_capture", first}},
+  View({{"on_click", pressed}}, "ok"));
 ```
 
-Capture handlers run on the way down to the target, before it: a click on the button runs `first`,
-then `pressed`, then `bubbled`.
+Capture handlers run on the way down to the target, before it: a click on the inner element runs
+`first`, then `pressed`, then `bubbled`.
 
-The `Event` is synthetic and the same on every renderer:
+The `Event` is synthetic and the same on every host. The fields you will actually reach for:
 
 ```cpp
 struct Event {
-  NodeHandle target;
-  NodeHandle current_target;
   std::string type;
+  DomNode target, current_target;
   double client_x, client_y;
   int button;
   bool shift_key, ctrl_key, alt_key, meta_key;
   std::string key;
   std::string value;
   double delta_x, delta_y;
-  std::function<void()> prevent_default;
-  std::function<void()> stop_propagation;
-  Payload native;
+  RawPayload native;
+
+  void prevent_default() const;
+  void stop_propagation() const;
 };
 ```
 
-`key` is the pressed key (`"a"`, `"Enter"`, `"Escape"`, `"ArrowUp"`), `value` is a control's value
-on change, and `native` carries the raw host event for anything the fields above do not cover.
+`key` is the pressed key:
+
+- bare characters: `"a"`, `"7"`
+- `"enter"`, `"escape"`, `"tab"`, `"delete"`, `"backspace"`
+- space is `" "`
+- `"arrow_left"`, `"arrow_right"`, `"arrow_up"`, `"arrow_down"`
+- `"shift"`, `"control"`, `"alt"`, `"meta"`
+
+`value` is a control's value on change, and `native` carries the raw host event for anything the
+fields above do not cover. The rest of the host event surface is there too (`buttons`,
+`movement_x`, `code`, `location`, `repeat`, `delta_z`, `delta_mode`, `data`, `related_target`,
+`event_phase`, `get_modifier_state`), a host fills what it can.
 
 ```cpp
-EventHandler zoom = [set_scale](const Event& event) {
+Callback zoom = [set_scale](const Event& event) {
   event.prevent_default();
   set_scale([delta = event.delta_y](double scale) { return scale - delta * 0.001; });
 };
 
-return div({{"class", "graph"}, {"on_wheel", zoom}}, children());
+return View({{"class", "graph"}, {"on_wheel", zoom}}, children());
 ```
 
 For a listener on the document instead of an element, see
@@ -415,59 +455,70 @@ For a listener on the document instead of an element, see
 `portal` renders a subtree into a different container:
 
 ```cpp
-return div({{"class", "row"}},
-  span({}, "row"),
+return View({{"class", "row"}},
+  Text({}, "row"),
   portal(overlay_layer, Tooltip({{"text", "on top of everything"}})));
 ```
 
 Context still flows from where the `portal` call sits, not from the target.
 
-## Renderers
+## Hosts
 
-c++react renders through a `Renderer`. One ships with the library, `renderers/test.hpp`: an in-memory
-tree you can serialize and fire events at, so components can be tested without a UI toolkit.
+c++react renders through a `Host`. One ships with the library, `hosts/html_string.hpp`: an
+in-memory tree with `inner_html` and `dispatch_event`, so components can be tested without a UI
+toolkit.
 
 ```cpp
-#include "cppreact/renderers/test.hpp"
+#include "cppreact/hosts/html_string.hpp"
 
-renderers::TestRenderer renderer;
-Container root = renderer.create_container();
-render(div({{"class", "x"}}, "hi"), root);
+hosts::HtmlStringHost host;
+Container root = host.create_container();
+render(View({{"class", "x"}}, "hi"), root);
 
-renderer.serialize();   // <div class="x">hi</div>
+host.inner_html();   // <view class="x">hi</view>
 ```
 
-The RmlUi renderer ships too, in `renderers/rml.hpp`. Construction is the only difference, it mounts
-into a host element:
+The RmlUi host ships too, in `hosts/rml.hpp`. Construction is the only difference, it mounts
+into an element of the document:
 
 ```cpp
-#include "cppreact/renderers/rml.hpp"
+#include "cppreact/hosts/rml.hpp"
 
-renderers::RmlRenderer renderer;
-Container root = renderer.create_container(rml_element);
+hosts::RmlHost host;
+Container root = host.create_container(rml_element);
 render(App({}), root);
 ```
 
-`set_state` queues a re-render; nothing happens until you call `flush()`, once per frame from your
-loop, which batches the frame's updates into one render.
+Each host realizes the five tags in its own vocabulary: the RmlUi host maps `image` to RmlUi's
+`img` and instances the rest under the library's names, so RCSS selects `view` and `text`
+directly.
 
-To write your own renderer, implement `Renderer`. `renderers/test.hpp` is the reference to read.
+`set_state` queues a re-render; nothing happens until you call `flush()`, which batches the queued
+updates into one render. Call it wherever it fits, a render loop calls it once per frame.
+
+A host may override `update_layout()` to bring its native tree's layout up to date. The commit
+calls it once per batch before layout effects run, and only when layout effects are pending. The
+RmlUi host updates the owner document there, the html-string host counts the calls in
+`layout_updates`. The default is a no-op.
+
+To write your own host, implement `Host`. `hosts/html_string.hpp` is the reference to read.
 
 ## Native elements
 
 Some nodes draw their own pixels and have no children to diff: a canvas, a chart. Such an element
-implements `NativeElement`, and the renderer registers its tag as native:
+implements `NativeElement`, and the host registers its tag as native:
 
 ```cpp
 struct NativeElement {
-  virtual void set_native_prop(std::string_view name, const Payload& value);
-  virtual Payload native_reference();
+  virtual void set_native_property(std::string_view name, const RawPayload& value);
+  virtual RawPayload native_reference();
 };
 ```
 
-A component feeds it a `Payload` prop (curve samples, a model) and reads a handle back through a
-`ref`. c++react only ever moves the `Payload`, never a toolkit type.
+A component feeds it a `RawPayload` prop (curve samples, a model) and reads a handle back through
+a `ref`. c++react only ever moves the `RawPayload`, never a toolkit type.
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE). The test suite is ported from
+[Preact's test suite](https://github.com/preactjs/preact/tree/main/hooks/test/browser) (MIT).

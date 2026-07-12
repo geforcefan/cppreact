@@ -12,7 +12,13 @@ target_compile_features(cppreact INTERFACE cxx_std_20)
 
 option(CPPREACT_TESTS "build the cppreact tests" ${PROJECT_IS_TOP_LEVEL})
 
-if(CPPREACT_TESTS)
+if(CPPREACT_TESTS AND NOT EMSCRIPTEN)
   enable_testing()
+  include(FetchContent)
+  FetchContent_Declare(catch2
+    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+    GIT_TAG v3.15.2
+    GIT_SHALLOW TRUE)
+  FetchContent_MakeAvailable(catch2)
   add_subdirectory(tests)
 endif()

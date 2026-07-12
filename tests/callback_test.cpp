@@ -1,38 +1,57 @@
-#include <cassert>
-#include <cstdio>
 #include <functional>
+#include <string>
 
-#include "cppreact/hooks.hpp"
-#include "cppreact/render.hpp"
-#include "cppreact/vnode.hpp"
-#include "cppreact/renderers/test.hpp"
+#include <catch2/catch_test_macros.hpp>
+
+#include "cppreact/value/callback.hpp"
+#include "cppreact/event/synthetic_event.hpp"
+#include "cppreact/value/value.hpp"
 
 using namespace cppreact;
 
-static std::function<int()> stored;
+TEST_CASE("callbacks") {
+    SECTION("deduces the signature from the lambda and unpacks only with it") {
+        Callback on_change{[](double) {}};
+        REQUIRE(on_change.as<void(double)>() != nullptr);
+        REQUIRE(on_change.as<std::function<void(double)>>() != nullptr);
+        REQUIRE(on_change.as<void(float)>() == nullptr);
+        REQUIRE(on_change.as<EventCallback>() == nullptr);
+    }
 
-static VNode CallbackHost(const Props& props) {
-  int value = static_cast<int>(props.get<double>("value").value_or(0));
-  int gate = static_cast<int>(props.get<double>("gate").value_or(0));
-  stored = use_callback<std::function<int()>>([value] { return value; }, deps(gate));
-  return h("span", {});
-}
+    SECTION("the named signatures unpack through their aliases") {
+        Callback on_click{[](const Event&) {}};
+        REQUIRE(on_click.as<EventCallback>() != nullptr);
 
-int main() {
-  renderers::TestRenderer renderer;
-  Container root = renderer.create_container();
+        Callback reference{[](DomNode) {}};
+        REQUIRE(reference.as<ReferenceCallback>() != nullptr);
+        REQUIRE(reference.as<EventCallback>() == nullptr);
+    }
 
-  render(h(CallbackHost, {{"value", 1.0}, {"gate", 0.0}}), root);
-  assert(stored() == 1);
+    SECTION("carries any signature including return values") {
+        Callback add_one{[](double count) { return static_cast<int>(count) + 1; }};
+        const std::function<int(double)>* function = add_one.as<int(double)>();
+        REQUIRE(function != nullptr);
+        REQUIRE((*function)(2.0) == 3);
+    }
 
-  render(h(CallbackHost, {{"value", 2.0}, {"gate", 0.0}}), root);
-  assert(stored() == 1);
-  std::printf("PASS unchanged deps keep the first callback\n");
+    SECTION("accepts a std::function and keeps its signature") {
+        std::function<void(std::string)> report = [](std::string) {};
+        Callback wrapped{report};
+        REQUIRE(wrapped.as<void(std::string)>() != nullptr);
+        REQUIRE(wrapped.as<void(double)>() == nullptr);
+    }
 
-  render(h(CallbackHost, {{"value", 3.0}, {"gate", 1.0}}), root);
-  assert(stored() == 3);
-  std::printf("PASS changed deps swap in the new callback\n");
+    SECTION("copies share identity, fresh constructions never do") {
+        Callback handler{[](const Event&) {}};
+        Callback copy = handler;
+        REQUIRE(handler == copy);
+        REQUIRE_FALSE(handler == Callback{[](const Event&) {}});
+    }
 
-  std::printf("ALL callback tests passed\n");
-  return 0;
+    SECTION("an empty callback is falsy and unpacks to nothing") {
+        REQUIRE_FALSE(static_cast<bool>(Callback{}));
+        REQUIRE(Callback{}.as<void(double)>() == nullptr);
+        REQUIRE(Callback{} == Callback{});
+        REQUIRE_FALSE(static_cast<bool>(Callback{nullptr}));
+    }
 }
