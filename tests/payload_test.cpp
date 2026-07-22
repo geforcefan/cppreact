@@ -1,3 +1,4 @@
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -22,8 +23,12 @@ struct Roll {
   bool operator==(const Roll&) const = default;
 };
 
-struct Opaque {
+struct SharedHandle {
   std::shared_ptr<int> handle{};
+};
+
+struct Sampler {
+  std::function<double(double)> sample{};
 };
 
 }
@@ -47,10 +52,23 @@ TEST_CASE("payload") {
     }
 
     SECTION("non comparable payloads fall back to identity") {
-        Payload first = make_payload(Opaque{});
+        Payload first = make_payload(SharedHandle{});
         Payload copy = first;
         REQUIRE(first == copy);
-        REQUIRE_FALSE(first == make_payload(Opaque{}));
+        REQUIRE_FALSE(first == make_payload(SharedHandle{}));
+    }
+
+    SECTION("a vector of non comparable elements falls back to identity, no hard error") {
+        Payload first = make_payload(std::vector<Sampler>{});
+        Payload copy = first;
+        REQUIRE(first.equals == nullptr);
+        REQUIRE(first == copy);
+        REQUIRE_FALSE(first == make_payload(std::vector<Sampler>{}));
+    }
+
+    SECTION("a vector of comparable elements still compares by value") {
+        REQUIRE(make_payload(std::vector<int>{1, 2}) == make_payload(std::vector<int>{1, 2}));
+        REQUIRE_FALSE(make_payload(std::vector<int>{1, 2}) == make_payload(std::vector<int>{2}));
     }
 
     SECTION("empty payloads are equal, empty never equals stored") {

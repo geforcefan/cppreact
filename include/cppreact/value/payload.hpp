@@ -3,6 +3,7 @@
 #include <concepts>
 #include <memory>
 #include <utility>
+#include <vector>
 
 namespace cppreact {
 
@@ -10,6 +11,12 @@ namespace payload_detail {
 
 template <class Stored>
 inline constexpr char type_tag = 0;
+
+template <class Stored>
+inline constexpr bool comparable = std::equality_comparable<Stored>;
+
+template <class Element, class Allocator>
+inline constexpr bool comparable<std::vector<Element, Allocator>> = comparable<Element>;
 
 template <class Stored>
 bool stored_equal(const void* left, const void* right) {
@@ -33,7 +40,7 @@ struct Payload {
 template <class Stored>
 Payload make_payload(std::shared_ptr<Stored> payload) {
   Payload result{std::move(payload), &payload_detail::type_tag<Stored>, nullptr};
-  if constexpr (std::equality_comparable<Stored>) {
+  if constexpr (payload_detail::comparable<Stored>) {
     result.equals = &payload_detail::stored_equal<Stored>;
   }
   return result;
