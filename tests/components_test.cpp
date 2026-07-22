@@ -1,11 +1,10 @@
 #include <functional>
-#include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "cppreact/context/create_context.hpp"
 #include "cppreact/hooks/hooks.hpp"
 #include "cppreact/render.hpp"
 #include "cppreact/hosts/html_string.hpp"
@@ -16,24 +15,69 @@
 using namespace cppreact;
 using namespace cppreact::tags;
 
+namespace {
+
+struct HarnessProps {};
+
+struct LabelProps {
+    std::string label{};
+};
+
+struct LabelIterationProps {
+    std::string label{};
+    int iteration = 0;
+};
+
+struct EntryProps {
+    Children children{};
+};
+
+struct RecyclableProps {
+    std::string key{};
+};
+
+struct ToggleChildProps {
+    bool use_function_child = false;
+};
+
+struct DepthChildProps {
+    int items = 0;
+    std::function<void()> update{};
+};
+
+}
+
+static const FunctionComponent MixedArrayFoo =
+    [](const HarnessProps&) -> VNode { return text("d"); };
+
+static std::vector<VNode> mixed_array() {
+    std::vector<VNode> items;
+    items.push_back(VNode(0));
+    items.push_back(text("a"));
+    items.push_back(text("b"));
+    items.push_back(Text({.children = {"c"}}));
+    items.push_back(MixedArrayFoo({}));
+    items.push_back(fragment());
+    items.push_back(fragment());
+    items.push_back(fragment());
+    items.push_back(fragment(text("e"), text("f")));
+    items.push_back(VNode(1));
+    return items;
+}
+
+static const std::string mixed_array_html = "0ab<text>c</text>def1";
+
 static std::vector<std::string> ops;
 
 static int outer_render_calls = 0;
 static int inner_render_calls = 0;
 static int inner_render_serial = 0;
 
-static FunctionComponent nested_inner_component = nullptr;
-static FunctionComponent nested_second_inner_component = nullptr;
-static FunctionComponent nested_intermediate_component = nullptr;
-
 static StateSetter<bool> root_alt_setter;
 static std::function<void()> add_entry_callback;
 static std::function<void()> add_entry_twice_callback;
 static std::function<void()> reset_entries_callback;
-static FunctionComponent entry_component = nullptr;
-static FunctionComponent paint_something_component = nullptr;
 
-static FunctionComponent recyclable_component = nullptr;
 static StateSetter<bool> good_container_alt_setter;
 static StateSetter<bool> bad_container_alt_setter;
 static int recyclable_message_index = 0;
@@ -53,25 +97,6 @@ static std::function<void()> depth_update_callback;
 static int depth_child_render_calls = 0;
 static int depth_parent_render_count = 0;
 
-static const FunctionComponent MixedArrayFoo = [](const Object&) -> VNode { return "d"; };
-
-static std::vector<VNode> mixed_array() {
-    std::vector<VNode> items;
-    items.push_back(VNode(0));
-    items.push_back(text("a"));
-    items.push_back(text("b"));
-    items.push_back(Text({}, "c"));
-    items.push_back(MixedArrayFoo({}));
-    items.push_back(fragment());
-    items.push_back(fragment());
-    items.push_back(fragment());
-    items.push_back(fragment(text("e"), text("f")));
-    items.push_back(VNode(1));
-    return items;
-}
-
-static const std::string mixed_array_html = "0ab<text>c</text>def1";
-
 TEST_CASE("Components") {
     hosts::HtmlStringHost renderer;
     Container scratch = renderer.create_container();
@@ -79,32 +104,29 @@ TEST_CASE("Components") {
     SECTION("should render functional components") {
         outer_render_calls = 0;
 
-        const FunctionComponent C3 = [](const Object& props) -> VNode {
+        const FunctionComponent Panel = [](const LabelProps& props) -> VNode {
             ++outer_render_calls;
-            std::string foo = props.get<std::string>("foo","");
-            Callback on_baz = props.get<Callback>("on_baz",Callback{});
-            return View({{"foo", foo}, {"on_baz", on_baz}});
+            return View({.class_name = props.label});
         };
 
-        render(C3({{"foo", "bar"}, {"on_baz", Callback{[](const Event&) {}}}}), scratch);
+        render(Panel({.label = "bar"}), scratch);
 
         REQUIRE(outer_render_calls == 1);
-        REQUIRE(renderer.inner_html() == "<view foo=\"bar\"></view>");
+        REQUIRE(renderer.inner_html() == "<view class=\"bar\"></view>");
     }
 
     SECTION("should render components with props") {
-        const FunctionComponent C2 = [](const Object& props) -> VNode {
-            std::string foo = props.get<std::string>("foo","");
-            return View({{"foo", foo}});
+        const FunctionComponent Panel = [](const LabelProps& props) -> VNode {
+            return View({.class_name = props.label});
         };
 
-        render(C2({{"foo", "bar"}}), scratch);
+        render(Panel({.label = "bar"}), scratch);
 
-        REQUIRE(renderer.inner_html() == "<view foo=\"bar\"></view>");
+        REQUIRE(renderer.inner_html() == "<view class=\"bar\"></view>");
     }
 
     SECTION("should render string") {
-        const FunctionComponent StringComponent = [](const Object&) -> VNode {
+        const FunctionComponent StringComponent = [](const HarnessProps&) -> VNode {
             return text("Hi there");
         };
 
@@ -113,7 +135,7 @@ TEST_CASE("Components") {
     }
 
     SECTION("should render number as string") {
-        const FunctionComponent NumberComponent = [](const Object&) -> VNode {
+        const FunctionComponent NumberComponent = [](const HarnessProps&) -> VNode {
             return VNode(42);
         };
 
@@ -122,23 +144,23 @@ TEST_CASE("Components") {
     }
 
     SECTION("should remove orphaned elements replaced by Components") {
-        const FunctionComponent SpanComponent = [](const Object&) -> VNode {
-            return Text({}, "span in a component");
+        const FunctionComponent SpanComponent = [](const HarnessProps&) -> VNode {
+            return Text({.children = {"span in a component"}});
         };
 
         render(SpanComponent({}), scratch);
-        render(View({}, "just a div"), scratch);
+        render(View({.children = {"just a div"}}), scratch);
         render(SpanComponent({}), scratch);
 
         REQUIRE(renderer.inner_html() == "<text>span in a component</text>");
     }
 
     SECTION("should remove children when root changes to text node") {
-        const FunctionComponent RootSwitch = [](const Object&) -> VNode {
-            auto [alt, set_alt] = use_state<bool>(false);
-            root_alt_setter = set_alt;
-            if (alt) return text("asdf");
-            return View({}, "test");
+        const FunctionComponent RootSwitch = [](const HarnessProps&) -> VNode {
+            auto [alternate, set_alternate] = use_state<bool>(false);
+            root_alt_setter = set_alternate;
+            if (alternate) return text("asdf");
+            return View({.children = {"test"}});
         };
 
         render(RootSwitch({}), scratch);
@@ -157,12 +179,11 @@ TEST_CASE("Components") {
     }
 
     SECTION("should maintain order when setting state (that inserts dom-elements)") {
-        const FunctionComponent Entry = [](const Object&) -> VNode {
-            return View({}, children());
+        const FunctionComponent Entry = [](const EntryProps& props) -> VNode {
+            return View({.children = props.children});
         };
-        entry_component = Entry;
 
-        const FunctionComponent App = [](const Object&) -> VNode {
+        const FunctionComponent App = [Entry](const HarnessProps&) -> VNode {
             auto [values, set_values] = use_state(std::vector<std::string>{"abc"});
             add_entry_callback = [values, set_values] {
                 std::vector<std::string> next = values;
@@ -178,11 +199,11 @@ TEST_CASE("Components") {
             reset_entries_callback = [set_values] { set_values(std::vector<std::string>{"abc"}); };
 
             std::vector<VNode> entries;
-            for (const std::string& value : values) entries.push_back(entry_component({}, value));
-            entries.push_back(View({}, "First Button"));
-            entries.push_back(View({}, "Second Button"));
-            entries.push_back(View({}, "Third Button"));
-            return View({}, std::move(entries));
+            for (const std::string& value : values) entries.push_back(Entry({.children = {value}}));
+            entries.push_back(View({.children = {"First Button"}}));
+            entries.push_back(View({.children = {"Second Button"}}));
+            entries.push_back(View({.children = {"Third Button"}}));
+            return View({.children = std::move(entries)});
         };
 
         render(App({}), scratch);
@@ -220,7 +241,7 @@ TEST_CASE("Components") {
         recyclable_message_index = 0;
         static const std::string messages[8] = {"A", "B", "C", "D", "E", "F", "G", "H"};
 
-        const FunctionComponent Comp = [](const Object&) -> VNode {
+        const FunctionComponent Comp = [](const RecyclableProps&) -> VNode {
             bool& mounted = use_ref<bool>(false);
             std::string& message = use_ref<std::string>("");
             if (!mounted) {
@@ -228,26 +249,25 @@ TEST_CASE("Components") {
                 ops.push_back("Mount " + message);
                 mounted = true;
             }
-            return View({}, message);
-        };
-        recyclable_component = Comp;
-
-        const FunctionComponent GoodContainer = [](const Object&) -> VNode {
-            auto [alt, set_alt] = use_state<bool>(false);
-            good_container_alt_setter = set_alt;
-            return View({},
-                       when(!alt, [] { return recyclable_component({{"key", "1"}}); }),
-                       when(!alt, [] { return recyclable_component({{"key", "2"}}); }),
-                       when(alt, [] { return recyclable_component({{"key", "3"}}); }));
+            return View({.children = {message}});
         };
 
-        const FunctionComponent BadContainer = [](const Object&) -> VNode {
-            auto [alt, set_alt] = use_state<bool>(false);
-            bad_container_alt_setter = set_alt;
-            return View({},
-                       when(!alt, [] { return recyclable_component({}); }),
-                       when(!alt, [] { return recyclable_component({}); }),
-                       when(alt, [] { return recyclable_component({}); }));
+        const FunctionComponent GoodContainer = [Comp](const HarnessProps&) -> VNode {
+            auto [alternate, set_alternate] = use_state<bool>(false);
+            good_container_alt_setter = set_alternate;
+            return View({.children = {
+                            when(!alternate, [Comp] { return Comp({.key = "1"}); }),
+                            when(!alternate, [Comp] { return Comp({.key = "2"}); }),
+                            when(alternate, [Comp] { return Comp({.key = "3"}); })}});
+        };
+
+        const FunctionComponent BadContainer = [Comp](const HarnessProps&) -> VNode {
+            auto [alternate, set_alternate] = use_state<bool>(false);
+            bad_container_alt_setter = set_alternate;
+            return View({.children = {
+                            when(!alternate, [Comp] { return Comp({}); }),
+                            when(!alternate, [Comp] { return Comp({}); }),
+                            when(alternate, [Comp] { return Comp({}); })}});
         };
 
         render(GoodContainer({}), scratch);
@@ -273,13 +293,13 @@ TEST_CASE("Components") {
     }
 
     SECTION("should render DOM element's array children") {
-        render(View({}, mixed_array()), scratch);
+        render(View({.children = mixed_array()}), scratch);
         DomNode root = renderer.find_first("view");
         REQUIRE(renderer.inner_html(root) == mixed_array_html);
     }
 
     SECTION("should render Component's array children") {
-        const FunctionComponent MixedArrayComponent = [](const Object&) -> VNode {
+        const FunctionComponent MixedArrayComponent = [](const HarnessProps&) -> VNode {
             return fragment(mixed_array());
         };
 
@@ -288,7 +308,7 @@ TEST_CASE("Components") {
     }
 
     SECTION("should render Fragment's array children") {
-        const FunctionComponent MixedArrayFragmentComponent = [](const Object&) -> VNode {
+        const FunctionComponent MixedArrayFragmentComponent = [](const HarnessProps&) -> VNode {
             return fragment(mixed_array());
         };
 
@@ -297,15 +317,21 @@ TEST_CASE("Components") {
     }
 
     SECTION("should render sibling array children") {
-        const FunctionComponent Todo = [](const Object&) -> VNode {
+        const FunctionComponent Todo = [](const HarnessProps&) -> VNode {
             std::vector<std::string> first_pair{"a", "b"};
             std::vector<std::string> second_pair{"c", "d"};
-            return View({},
-                     View({}, "A header"),
-                     fragment(map(first_pair, [](const std::string& value) { return View({}, value); })),
-                     View({}, "A divider"),
-                     fragment(map(second_pair, [](const std::string& value) { return View({}, value); })),
-                     View({}, "A footer"));
+            return View({.children = {
+                            View({.children = {"A header"}}),
+                            fragment(map(first_pair,
+                                         [](const std::string& value) {
+                                             return View({.children = {value}});
+                                         })),
+                            View({.children = {"A divider"}}),
+                            fragment(map(second_pair,
+                                         [](const std::string& value) {
+                                             return View({.children = {value}});
+                                         })),
+                            View({.children = {"A footer"}})}});
         };
 
         render(Todo({}), scratch);
@@ -316,18 +342,19 @@ TEST_CASE("Components") {
     }
 
     SECTION("should render wrapper HOCs") {
-        static Context<std::string> bob_ross_context = create_context(std::string(""));
-        static std::string bob_ross_text =
+        Context<std::string> bob_ross_context = create_context(std::string(""));
+        const std::string bob_ross_text =
             "We'll throw some happy little limbs on this tree.";
 
-        const FunctionComponent PaintSomething = [](const Object&) -> VNode {
+        const FunctionComponent PaintSomething = [bob_ross_context](const HarnessProps&) -> VNode {
             const std::string& value = use_context(bob_ross_context);
-            return View({}, value);
+            return View({.children = {value}});
         };
-        paint_something_component = PaintSomething;
 
-        const FunctionComponent Paint = [](const Object&) -> VNode {
-            return provide(bob_ross_context, bob_ross_text, paint_something_component({}));
+        const FunctionComponent Paint =
+            [bob_ross_context, PaintSomething, bob_ross_text](const HarnessProps&) -> VNode {
+            return bob_ross_context.Provider(
+                {.value = bob_ross_text, .children = {PaintSomething({})}});
         };
 
         render(Paint({}), scratch);
@@ -337,66 +364,58 @@ TEST_CASE("Components") {
     SECTION("should render nested functional components") {
         outer_render_calls = 0;
         inner_render_calls = 0;
-        static std::string last_inner_foo;
+        static std::string last_inner_label;
 
-        const FunctionComponent Inner = [](const Object& props) -> VNode {
+        const FunctionComponent Inner = [](const LabelProps& props) -> VNode {
             ++inner_render_calls;
-            std::string foo = props.get<std::string>("foo","");
-            last_inner_foo = foo;
-            return View({{"foo", foo}}, "inner");
+            last_inner_label = props.label;
+            return View({.class_name = props.label, .children = {"inner"}});
         };
-        nested_inner_component = Inner;
 
-        const FunctionComponent Outer = [](const Object& props) -> VNode {
+        const FunctionComponent Outer = [Inner](const LabelProps& props) -> VNode {
             ++outer_render_calls;
-            std::string foo = props.get<std::string>("foo","");
-            return nested_inner_component({{"foo", foo}});
+            return Inner({.label = props.label});
         };
 
-        render(Outer({{"foo", "bar"}, {"on_baz", Callback{[](const Event&) {}}}}), scratch);
+        render(Outer({.label = "bar"}), scratch);
 
         REQUIRE(outer_render_calls == 1);
         REQUIRE(inner_render_calls == 1);
-        REQUIRE(last_inner_foo == "bar");
-        REQUIRE(renderer.inner_html() == "<view foo=\"bar\">inner</view>");
+        REQUIRE(last_inner_label == "bar");
+        REQUIRE(renderer.inner_html() == "<view class=\"bar\">inner</view>");
     }
 
     SECTION("should re-render nested functional components") {
         inner_render_calls = 0;
         inner_render_serial = 0;
 
-        const FunctionComponent Inner = [](const Object& props) -> VNode {
+        const FunctionComponent Inner = [](const LabelIterationProps& props) -> VNode {
             ++inner_render_calls;
             ++inner_render_serial;
-            int i = static_cast<int>(props.get<double>("i",0));
-            std::string foo = props.get<std::string>("foo","");
-            return View({{"j", static_cast<double>(inner_render_serial)},
-                       {"i", static_cast<double>(i)},
-                       {"foo", foo}},
-                      "inner");
-        };
-        nested_inner_component = Inner;
-
-        const FunctionComponent Outer = [](const Object& props) -> VNode {
-            auto [i, set_i] = use_state<int>(1);
-            outer_update_callback = [set_i, i] { set_i(i + 1); };
-            std::string foo = props.get<std::string>("foo","");
-            return nested_inner_component({{"i", static_cast<double>(i)}, {"foo", foo}});
+            return View({.class_name = props.label,
+                         .children = {"iteration=" + std::to_string(props.iteration) +
+                                      " serial=" + std::to_string(inner_render_serial)}});
         };
 
-        render(Outer({{"foo", "bar"}}), scratch);
+        const FunctionComponent Outer = [Inner](const LabelProps& props) -> VNode {
+            auto [iteration, set_iteration] = use_state<int>(1);
+            outer_update_callback = [set_iteration, iteration] { set_iteration(iteration + 1); };
+            return Inner({.label = props.label, .iteration = iteration});
+        };
+
+        render(Outer({.label = "bar"}), scratch);
 
         outer_update_callback();
         flush();
 
         REQUIRE(inner_render_calls == 2);
-        REQUIRE(renderer.inner_html() == "<view foo=\"bar\" i=\"2\" j=\"2\">inner</view>");
+        REQUIRE(renderer.inner_html() == "<view class=\"bar\">iteration=2 serial=2</view>");
 
         outer_update_callback();
         flush();
 
         REQUIRE(inner_render_calls == 3);
-        REQUIRE(renderer.inner_html() == "<view foo=\"bar\" i=\"3\" j=\"3\">inner</view>");
+        REQUIRE(renderer.inner_html() == "<view class=\"bar\">iteration=3 serial=3</view>");
     }
 
     SECTION("should re-render nested components") {
@@ -405,7 +424,7 @@ TEST_CASE("Components") {
         inner_render_serial = 0;
         outer_alt_flag = false;
 
-        const FunctionComponent Inner = [](const Object& props) -> VNode {
+        const FunctionComponent Inner = [](const LabelIterationProps& props) -> VNode {
             ++inner_render_calls;
             ++inner_render_serial;
             use_effect(
@@ -414,75 +433,68 @@ TEST_CASE("Components") {
                     return [] { ops.push_back("Unmount Inner"); };
                 },
                 {});
-            int i = static_cast<int>(props.get<double>("i",0));
-            std::string foo = props.get<std::string>("foo","");
-            return View({{"j", static_cast<double>(inner_render_serial)},
-                       {"i", static_cast<double>(i)},
-                       {"foo", foo}},
-                      "inner");
-        };
-        nested_inner_component = Inner;
-
-        const FunctionComponent Outer = [](const Object& props) -> VNode {
-            auto [i, set_i] = use_state<int>(1);
-            outer_update_callback = [set_i, i] { set_i(i + 1); };
-            if (outer_alt_flag) return View({{"is-alt", true}});
-            std::string foo = props.get<std::string>("foo","");
-            return nested_inner_component({{"i", static_cast<double>(i)}, {"foo", foo}});
+            return View({.class_name = props.label,
+                         .children = {"iteration=" + std::to_string(props.iteration) +
+                                      " serial=" + std::to_string(inner_render_serial)}});
         };
 
-        render(Outer({{"foo", "bar"}}), scratch);
+        const FunctionComponent Outer = [Inner](const LabelProps& props) -> VNode {
+            auto [iteration, set_iteration] = use_state<int>(1);
+            outer_update_callback = [set_iteration, iteration] { set_iteration(iteration + 1); };
+            if (outer_alt_flag) return View({.class_name = "alt"});
+            return Inner({.label = props.label, .iteration = iteration});
+        };
+
+        render(Outer({.label = "bar"}), scratch);
         REQUIRE(ops == std::vector<std::string>{"Mount Inner"});
 
         outer_update_callback();
         flush();
         REQUIRE(inner_render_calls == 2);
-        REQUIRE(renderer.inner_html() == "<view foo=\"bar\" i=\"2\" j=\"2\">inner</view>");
+        REQUIRE(renderer.inner_html() == "<view class=\"bar\">iteration=2 serial=2</view>");
 
         outer_update_callback();
         flush();
         REQUIRE(inner_render_calls == 3);
-        REQUIRE(renderer.inner_html() == "<view foo=\"bar\" i=\"3\" j=\"3\">inner</view>");
+        REQUIRE(renderer.inner_html() == "<view class=\"bar\">iteration=3 serial=3</view>");
 
         outer_alt_flag = true;
         outer_update_callback();
         flush();
         REQUIRE(ops == std::vector<std::string>{"Mount Inner", "Unmount Inner"});
-        REQUIRE(renderer.inner_html() == "<view is-alt=\"true\"></view>");
+        REQUIRE(renderer.inner_html() == "<view class=\"alt\"></view>");
 
         outer_alt_flag = false;
         outer_update_callback();
         flush();
-        REQUIRE(renderer.inner_html() == "<view foo=\"bar\" i=\"5\" j=\"4\">inner</view>");
+        REQUIRE(renderer.inner_html() == "<view class=\"bar\">iteration=5 serial=4</view>");
     }
 
     SECTION("should resolve intermediary functional component") {
         ops.clear();
 
-        const FunctionComponent Inner = [](const Object&) -> VNode {
+        const FunctionComponent Inner = [](const HarnessProps&) -> VNode {
             use_effect(
                 []() -> CleanupFunction {
                     ops.push_back("Mount Inner");
                     return [] { ops.push_back("Unmount Inner"); };
                 },
                 {});
-            return View({}, "inner");
+            return View({.children = {"inner"}});
         };
-        nested_inner_component = Inner;
 
-        const FunctionComponent Intermediate = [](const Object&) -> VNode {
-            return nested_inner_component({});
+        const FunctionComponent Intermediate = [Inner](const HarnessProps&) -> VNode {
+            return Inner({});
         };
-        nested_intermediate_component = Intermediate;
 
-        const FunctionComponent Root = [](const Object&) -> VNode {
-            return nested_intermediate_component({});
+        const FunctionComponent Root = [Intermediate](const HarnessProps&) -> VNode {
+            return Intermediate({});
         };
 
         render(Root({}), scratch);
         REQUIRE(ops == std::vector<std::string>{"Mount Inner"});
 
-        render(h("asdf", {}), scratch);
+        render(View({}), scratch);
         REQUIRE(ops == std::vector<std::string>{"Mount Inner", "Unmount Inner"});
     }
 
@@ -493,17 +505,17 @@ TEST_CASE("Components") {
         inner_second_render_calls = 0;
         inner_second_mount_count = 0;
 
-        const FunctionComponent InnerFirst = [](const Object&) -> VNode {
+        const FunctionComponent InnerFirst = [](const HarnessProps&) -> VNode {
             ++inner_first_render_calls;
             use_effect([]() -> CleanupFunction {
                             ++inner_first_mount_count;
                             return [] {};
                         },
                         {});
-            return View({}, "a");
+            return View({.children = {"a"}});
         };
 
-        const FunctionComponent InnerSecond = [](const Object&) -> VNode {
+        const FunctionComponent InnerSecond = [](const HarnessProps&) -> VNode {
             ++inner_second_render_calls;
             auto [tick, set_tick] = use_state<int>(0);
             inner_second_tick_setter = set_tick;
@@ -513,13 +525,11 @@ TEST_CASE("Components") {
                             return [] {};
                         },
                         {});
-            return View({}, "b");
+            return View({.children = {"b"}});
         };
 
-        nested_inner_component = InnerFirst;
-        nested_second_inner_component = InnerSecond;
-
-        const FunctionComponent Outer = [](const Object&) -> VNode {
+        const FunctionComponent Outer =
+            [InnerFirst, InnerSecond](const HarnessProps&) -> VNode {
             auto [use_second, set_use_second] = use_state<bool>(false);
             outer_child_setter = set_use_second;
             use_effect([]() -> CleanupFunction {
@@ -527,8 +537,8 @@ TEST_CASE("Components") {
                             return [] {};
                         },
                         {});
-            if (use_second) return nested_second_inner_component({});
-            return nested_inner_component({});
+            if (use_second) return InnerSecond({});
+            return InnerFirst({});
         };
 
         render(Outer({}), scratch);
@@ -552,35 +562,33 @@ TEST_CASE("Components") {
     SECTION("should remount when swapping between HOC child types") {
         ops.clear();
 
-        const FunctionComponent Inner = [](const Object&) -> VNode {
+        const FunctionComponent Inner = [](const HarnessProps&) -> VNode {
             use_effect(
                 []() -> CleanupFunction {
                     ops.push_back("Mount Inner");
                     return [] { ops.push_back("Unmount Inner"); };
                 },
                 {});
-            return View({{"class", "inner"}}, "foo");
-        };
-        nested_inner_component = Inner;
-
-        const FunctionComponent InnerFunction = [](const Object&) -> VNode {
-            return View({{"class", "inner-function"}}, "bar");
-        };
-        nested_second_inner_component = InnerFunction;
-
-        const FunctionComponent Outer = [](const Object& props) -> VNode {
-            bool use_function_child = props.get<bool>("use_function_child",false);
-            if (use_function_child) return nested_second_inner_component({});
-            return nested_inner_component({});
+            return View({.class_name = "inner", .children = {"foo"}});
         };
 
-        render(Outer({{"use_function_child", false}}), scratch);
+        const FunctionComponent InnerFunction = [](const HarnessProps&) -> VNode {
+            return View({.class_name = "inner-function", .children = {"bar"}});
+        };
+
+        const FunctionComponent Outer =
+            [Inner, InnerFunction](const ToggleChildProps& props) -> VNode {
+            if (props.use_function_child) return InnerFunction({});
+            return Inner({});
+        };
+
+        render(Outer({.use_function_child = false}), scratch);
         REQUIRE(ops == std::vector<std::string>{"Mount Inner"});
 
-        render(Outer({{"use_function_child", true}}), scratch);
+        render(Outer({.use_function_child = true}), scratch);
         REQUIRE(ops == std::vector<std::string>{"Mount Inner", "Unmount Inner"});
 
-        render(Outer({{"use_function_child", false}}), scratch);
+        render(Outer({.use_function_child = false}), scratch);
         REQUIRE(ops == std::vector<std::string>{"Mount Inner", "Unmount Inner", "Mount Inner"});
     }
 
@@ -588,17 +596,13 @@ TEST_CASE("Components") {
         depth_child_render_calls = 0;
         depth_parent_render_count = 0;
 
-        const FunctionComponent Child = [](const Object& props) -> VNode {
+        const FunctionComponent Child = [](const DepthChildProps& props) -> VNode {
             ++depth_child_render_calls;
-            int items = static_cast<int>(props.get<double>("items",0));
+            int items = props.items;
             auto [tick, set_tick] = use_state<int>(0);
-            std::optional<RawPayload> update_payload = props.get<RawPayload>("update");
-            depth_update_callback = [update_payload, set_tick, tick] {
-                if (update_payload && update_payload->data) {
-                    auto parent_update =
-                        std::static_pointer_cast<std::function<void()>>(update_payload->data);
-                    (*parent_update)();
-                }
+            std::function<void()> parent_update = props.update;
+            depth_update_callback = [parent_update, set_tick, tick] {
+                if (parent_update) parent_update();
                 set_tick(tick + 1);
             };
             std::string joined;
@@ -606,19 +610,16 @@ TEST_CASE("Components") {
                 if (index > 0) joined += ",";
                 joined += std::to_string(index);
             }
-            return View({}, joined);
+            return View({.children = {joined}});
         };
-        nested_inner_component = Child;
 
-        const FunctionComponent Parent = [](const Object&) -> VNode {
+        const FunctionComponent Parent = [Child](const HarnessProps&) -> VNode {
             auto [version, set_version] = use_state<int>(0);
             std::function<void()> parent_update = [set_version, version] {
                 set_version(version + 1);
             };
             ++depth_parent_render_count;
-            RawPayload update_payload{std::make_shared<std::function<void()>>(parent_update)};
-            return nested_inner_component(
-                {{"items", static_cast<double>(depth_parent_render_count)}, {"update", update_payload}});
+            return Child({.items = depth_parent_render_count, .update = parent_update});
         };
 
         render(Parent({}), scratch);

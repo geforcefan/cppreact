@@ -1,5 +1,6 @@
 #include <functional>
 #include <string>
+#include <vector>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -15,15 +16,45 @@
 using namespace cppreact;
 using namespace cppreact::tags;
 
+namespace {
+
+struct HarnessProps {};
+
+struct ChildrenProps {
+    Children children{};
+};
+
+struct ModalOpenProps {
+    bool open = false;
+    Children children{};
+};
+
+struct ShowProps {
+    bool show = false;
+};
+
+struct IndexProps {
+    std::string index{};
+};
+
+struct ComplexChildProps {
+    std::string index{};
+    bool is_portal = false;
+};
+
+struct ComplexParentProps {
+    bool is_portal = false;
+    Children children{};
+};
+
+}
+
 static DomNode portal_target = null_dom_node;
 static std::function<void()> set_false;
 static std::function<void()> toggle;
 static std::function<void()> bump;
 static StateSetter<std::string> set;
 static int unmount_calls = 0;
-static FunctionComponent modal_component = nullptr;
-static FunctionComponent child_component = nullptr;
-static Context<std::string> label_context;
 static std::string document_key;
 static std::function<void()> toggle_second;
 static StateSetter<DomNode> set_container;
@@ -33,37 +64,38 @@ static int child_mount_calls = 0;
 static int parent_mount_calls = 0;
 static int render_counter = 0;
 static DomNode secondary_scratch = null_dom_node;
-static FunctionComponent parent_component = nullptr;
-static FunctionComponent modal_button_component = nullptr;
-static FunctionComponent nested_portal_host_component = nullptr;
 static std::vector<std::string> effect_call_order;
 
 TEST_CASE("createPortal") {
     hosts::HtmlStringHost renderer;
-    portal_target = renderer.create_element("layer", Object{});
+    portal_target = renderer.create_element("layer");
     renderer.insert_before(renderer.document(), portal_target, null_dom_node);
     Container scratch = renderer.create_container();
 
     SECTION("should render into a different root node") {
-        const FunctionComponent Foo = [](const Object&) -> VNode {
-            return View({}, portal(portal_target, children()));
+        const FunctionComponent Foo = [](const ChildrenProps& props) -> VNode {
+            return View({.children = {
+                            Portal({.container = portal_target, .children = props.children})}});
         };
 
-        render(Foo({}, "foobar"), scratch);
+        render(Foo({.children = {"foobar"}}), scratch);
 
         REQUIRE(renderer.inner_html(portal_target) == "foobar");
     }
 
     SECTION("should insert the portal") {
-        const FunctionComponent Foo = [](const Object&) -> VNode {
+        const FunctionComponent Foo = [](const ChildrenProps& props) -> VNode {
             auto [mounted, set_mounted] = use_state<bool>(true);
-            set_false = [set_mounted = set_mounted] { set_mounted(false); };
-            return View({},
-                     Text({}, "Hello"),
-                     when(mounted, [] { return portal(portal_target, children()); }));
+            set_false = [set_mounted] { set_mounted(false); };
+            return View({.children = {
+                            Text({.children = {"Hello"}}),
+                            when(mounted, [&props] {
+                                return Portal(
+                                    {.container = portal_target, .children = props.children});
+                            })}});
         };
 
-        render(Foo({}, "foobar"), scratch);
+        render(Foo({.children = {"foobar"}}), scratch);
         REQUIRE(renderer.inner_html(portal_target) == "foobar");
 
         set_false();
@@ -72,17 +104,16 @@ TEST_CASE("createPortal") {
     }
 
     SECTION("should order portal children well") {
-        const FunctionComponent Modal = [](const Object&) -> VNode {
+        const FunctionComponent Modal = [](const HarnessProps&) -> VNode {
             auto [state, set_state] = use_state<int>(0);
-            bump = [set_state = set_state] { set_state(1); };
-            return fragment(when(state == 1, [] { return View({}, "top"); }),
-                            View({}, "middle"),
-                            View({}, "bottom"));
+            bump = [set_state] { set_state(1); };
+            return fragment(when(state == 1, [] { return View({.children = {"top"}}); }),
+                            View({.children = {"middle"}}),
+                            View({.children = {"bottom"}}));
         };
-        modal_component = Modal;
 
-        const FunctionComponent Foo = [](const Object&) -> VNode {
-            return portal(portal_target, modal_component({}));
+        const FunctionComponent Foo = [Modal](const HarnessProps&) -> VNode {
+            return Portal({.container = portal_target, .children = {Modal({})}});
         };
 
         render(Foo({}), scratch);
@@ -95,17 +126,20 @@ TEST_CASE("createPortal") {
     }
 
     SECTION("should toggle the portal") {
-        const FunctionComponent Foo = [](const Object&) -> VNode {
+        const FunctionComponent Foo = [](const ChildrenProps& props) -> VNode {
             auto [mounted, set_mounted] = use_state<bool>(true);
-            toggle = [set_mounted = set_mounted] {
+            toggle = [set_mounted] {
                 set_mounted(std::function<bool(const bool&)>([](const bool& state) { return !state; }));
             };
-            return View({},
-                     Text({}, "Hello"),
-                     when(mounted, [] { return portal(portal_target, children()); }));
+            return View({.children = {
+                            Text({.children = {"Hello"}}),
+                            when(mounted, [&props] {
+                                return Portal(
+                                    {.container = portal_target, .children = props.children});
+                            })}});
         };
 
-        render(Foo({}, View({}, "foobar")), scratch);
+        render(Foo({.children = {View({.children = {"foobar"}})}}), scratch);
         REQUIRE(renderer.inner_html(portal_target) == "<view>foobar</view>");
 
         toggle();
@@ -118,14 +152,15 @@ TEST_CASE("createPortal") {
     }
 
     SECTION("should notice prop changes on the portal") {
-        const FunctionComponent Foo = [](const Object&) -> VNode {
+        const FunctionComponent Foo = [](const HarnessProps&) -> VNode {
             auto [extra, set_extra] = use_state<std::string>("red");
             set = set_extra;
-            VNode content = extra.empty() ? Text({}, "Foo")
-                                          : Text({{"class", extra}}, "Foo");
-            return View({},
-                     Text({}, "Hello"),
-                     portal(portal_target, std::move(content)));
+            VNode content = extra.empty() ? Text({.children = {"Foo"}})
+                                          : Text({.class_name = extra, .children = {"Foo"}});
+            return View({.children = {
+                            Text({.children = {"Hello"}}),
+                            Portal({.container = portal_target,
+                                    .children = {std::move(content)}})}});
         };
 
         render(Foo({}), scratch);
@@ -139,18 +174,18 @@ TEST_CASE("createPortal") {
     SECTION("should not unmount the portal component") {
         unmount_calls = 0;
 
-        const FunctionComponent Child = [](const Object&) -> VNode {
+        const FunctionComponent Child = [](const ChildrenProps& props) -> VNode {
             use_effect([]() -> CleanupFunction { return [] { ++unmount_calls; }; }, {});
-            return fragment(children());
+            return props.children;
         };
-        child_component = Child;
 
-        const FunctionComponent Foo = [](const Object&) -> VNode {
+        const FunctionComponent Foo = [Child](const HarnessProps&) -> VNode {
             auto [extra, set_extra] = use_state<std::string>("red");
             set = set_extra;
-            return View({},
-                     Text({}, "Hello"),
-                     portal(portal_target, child_component({{"class", extra}}, "Foo")));
+            return View({.children = {
+                            Text({.children = {"Hello"}}),
+                            Portal({.container = portal_target,
+                                    .children = {Child({.children = {extra}})}})}});
         };
 
         render(Foo({}), scratch);
@@ -162,16 +197,16 @@ TEST_CASE("createPortal") {
     }
 
     SECTION("should not render <undefined> for Portal nodes") {
-        DomNode root = renderer.create_element("div", Object{});
+        DomNode root = renderer.create_element("div");
         renderer.insert_before(renderer.document(), root, null_dom_node);
 
-        const FunctionComponent Dialog = [](const Object&) -> VNode {
-            return View({}, "Dialog content");
+        const FunctionComponent Dialog = [](const HarnessProps&) -> VNode {
+            return View({.children = {"Dialog content"}});
         };
-        child_component = Dialog;
 
-        const FunctionComponent App = [](const Object&) -> VNode {
-            return View({}, portal(portal_target, child_component({})));
+        const FunctionComponent App = [Dialog](const HarnessProps&) -> VNode {
+            return View({.children = {
+                            Portal({.container = portal_target, .children = {Dialog({})}})}});
         };
 
         Container app_container{.host = &renderer, .mount = root};
@@ -181,16 +216,16 @@ TEST_CASE("createPortal") {
     }
 
     SECTION("should unmount Portal") {
-        DomNode root = renderer.create_element("div", Object{});
+        DomNode root = renderer.create_element("div");
         renderer.insert_before(renderer.document(), root, null_dom_node);
 
-        const FunctionComponent Dialog = [](const Object&) -> VNode {
-            return View({}, "Dialog content");
+        const FunctionComponent Dialog = [](const HarnessProps&) -> VNode {
+            return View({.children = {"Dialog content"}});
         };
-        child_component = Dialog;
 
-        const FunctionComponent App = [](const Object&) -> VNode {
-            return View({}, portal(portal_target, child_component({})));
+        const FunctionComponent App = [Dialog](const HarnessProps&) -> VNode {
+            return View({.children = {
+                            Portal({.container = portal_target, .children = {Dialog({})}})}});
         };
 
         Container app_container{.host = &renderer, .mount = root};
@@ -202,29 +237,29 @@ TEST_CASE("createPortal") {
     }
 
     SECTION("should not unmount when parent renders") {
-        DomNode root = renderer.create_element("div", Object{});
+        DomNode root = renderer.create_element("div");
         renderer.insert_before(renderer.document(), root, null_dom_node);
 
         child_mount_calls = 0;
         parent_mount_calls = 0;
 
-        const FunctionComponent Child = [](const Object&) -> VNode {
+        const FunctionComponent Child = [](const HarnessProps&) -> VNode {
             use_effect([]() -> CleanupFunction {
                 ++child_mount_calls;
                 return {};
             }, {});
             ReferenceObject ref = use_ref(ReferenceObject{});
             mounted_element_reference = ref;
-            return View({{"id", "child"}, {"ref", ref}}, "child");
+            return View({.class_name = "child", .ref = ref, .children = {"child"}});
         };
-        child_component = Child;
 
-        const FunctionComponent App = [](const Object&) -> VNode {
+        const FunctionComponent App = [Child](const HarnessProps&) -> VNode {
             use_effect([]() -> CleanupFunction {
                 ++parent_mount_calls;
                 return {};
             }, {});
-            return View({}, portal(portal_target, child_component({})));
+            return View({.children = {
+                            Portal({.container = portal_target, .children = {Child({})}})}});
         };
 
         Container app_container{.host = &renderer, .mount = root};
@@ -250,22 +285,25 @@ TEST_CASE("portal into shared container") {
     portal_target = renderer.document();
 
     SECTION("should leave a working root after the portal") {
-        const FunctionComponent Foo = [](const Object&) -> VNode {
+        const FunctionComponent Foo = [](const ChildrenProps& props) -> VNode {
             auto [mounted, set_mounted] = use_state<bool>(false);
             auto [mounted_second, set_mounted_second] = use_state<bool>(true);
-            toggle = [set_mounted = set_mounted] {
+            toggle = [set_mounted] {
                 set_mounted(std::function<bool(const bool&)>([](const bool& state) { return !state; }));
             };
-            toggle_second = [set_mounted_second = set_mounted_second] {
+            toggle_second = [set_mounted_second] {
                 set_mounted_second(
                     std::function<bool(const bool&)>([](const bool& state) { return !state; }));
             };
-            return View({},
-                     when(mounted, [] { return portal(portal_target, children()); }),
-                     when(mounted_second, [] { return Text({}, "Hello"); }));
+            return View({.children = {
+                            when(mounted, [&props] {
+                                return Portal(
+                                    {.container = portal_target, .children = props.children});
+                            }),
+                            when(mounted_second, [] { return Text({.children = {"Hello"}}); })}});
         };
 
-        render(Foo({}, View({}, "foobar")), scratch);
+        render(Foo({.children = {View({.children = {"foobar"}})}}), scratch);
         REQUIRE(renderer.inner_html() == "<view><text>Hello</text></view>");
 
         toggle();
@@ -290,23 +328,29 @@ TEST_CASE("portal into shared container") {
     }
 
     SECTION("should work with stacking portals") {
-        const FunctionComponent Foo = [](const Object&) -> VNode {
+        const FunctionComponent Foo = [](const ChildrenProps& props) -> VNode {
             auto [mounted, set_mounted] = use_state<bool>(false);
             auto [mounted_second, set_mounted_second] = use_state<bool>(false);
-            toggle = [set_mounted = set_mounted] {
+            toggle = [set_mounted] {
                 set_mounted(std::function<bool(const bool&)>([](const bool& state) { return !state; }));
             };
-            toggle_second = [set_mounted_second = set_mounted_second] {
+            toggle_second = [set_mounted_second] {
                 set_mounted_second(
                     std::function<bool(const bool&)>([](const bool& state) { return !state; }));
             };
-            return View({},
-                     Text({}, "Hello"),
-                     when(mounted, [] { return portal(portal_target, children()); }),
-                     when(mounted_second, [] { return portal(portal_target, View({}, "foobar2")); }));
+            return View({.children = {
+                            Text({.children = {"Hello"}}),
+                            when(mounted, [&props] {
+                                return Portal(
+                                    {.container = portal_target, .children = props.children});
+                            }),
+                            when(mounted_second, [] {
+                                return Portal({.container = portal_target,
+                                               .children = {View({.children = {"foobar2"}})}});
+                            })}});
         };
 
-        render(Foo({}, View({}, "foobar")), scratch);
+        render(Foo({.children = {View({.children = {"foobar"}})}}), scratch);
         REQUIRE(renderer.inner_html() == "<view><text>Hello</text></view>");
 
         toggle();
@@ -328,17 +372,18 @@ TEST_CASE("portal into shared container") {
     }
 
     SECTION("should work with changing the container") {
-        const FunctionComponent Foo = [](const Object&) -> VNode {
+        const FunctionComponent Foo = [](const ChildrenProps& props) -> VNode {
             auto [container, set_container_state] = use_state<DomNode>(portal_target);
             set_container = set_container_state;
             ReferenceObject ref = use_ref(ReferenceObject{});
             mounted_element_reference = ref;
-            return View({{"ref", ref}},
-                     Text({}, "Hello"),
-                     portal(container, children()));
+            return View({.ref = ref,
+                         .children = {
+                             Text({.children = {"Hello"}}),
+                             Portal({.container = container, .children = props.children})}});
         };
 
-        render(Foo({}, View({}, "foobar")), scratch);
+        render(Foo({.children = {View({.children = {"foobar"}})}}), scratch);
         REQUIRE(renderer.inner_html() == "<view>foobar</view><view><text>Hello</text></view>");
 
         set_container(mounted_element_reference.current());
@@ -347,23 +392,25 @@ TEST_CASE("portal into shared container") {
     }
 
     SECTION("should work with replacing placeholder portals") {
-        const FunctionComponent Foo = [](const Object&) -> VNode {
+        const FunctionComponent Foo = [](const ChildrenProps& props) -> VNode {
             auto [mounted, set_mounted] = use_state<bool>(false);
             auto [mounted_second, set_mounted_second] = use_state<bool>(false);
-            toggle = [set_mounted = set_mounted] {
+            toggle = [set_mounted] {
                 set_mounted(std::function<bool(const bool&)>([](const bool& state) { return !state; }));
             };
-            toggle_second = [set_mounted_second = set_mounted_second] {
+            toggle_second = [set_mounted_second] {
                 set_mounted_second(
                     std::function<bool(const bool&)>([](const bool& state) { return !state; }));
             };
-            return View({},
-                     Text({}, "Hello"),
-                     portal(portal_target, mounted ? children() : std::vector<VNode>{}),
-                     portal(portal_target, mounted_second ? children() : std::vector<VNode>{}));
+            return View({.children = {
+                            Text({.children = {"Hello"}}),
+                            Portal({.container = portal_target,
+                                    .children = mounted ? props.children : Children{}}),
+                            Portal({.container = portal_target,
+                                    .children = mounted_second ? props.children : Children{}})}});
         };
 
-        render(Foo({}, View({}, "foobar")), scratch);
+        render(Foo({.children = {View({.children = {"foobar"}})}}), scratch);
         REQUIRE(renderer.inner_html() == "<view><text>Hello</text></view>");
 
         toggle();
@@ -384,17 +431,18 @@ TEST_CASE("portal into shared container") {
     }
 
     SECTION("should work with removing an element from stacked container to new one") {
-        const FunctionComponent Foo = [](const Object&) -> VNode {
+        const FunctionComponent Foo = [](const ChildrenProps& props) -> VNode {
             auto [root, set_root] = use_state<DomNode>(portal_target);
             ReferenceObject ref = use_ref(ReferenceObject{});
-            toggle = [set_root = set_root, ref] { set_root(ref.current()); };
-            return View({{"ref", ref}},
-                     Text({}, "Hello"),
-                     portal(portal_target, children()),
-                     portal(root, children()));
+            toggle = [set_root, ref] { set_root(ref.current()); };
+            return View({.ref = ref,
+                         .children = {
+                             Text({.children = {"Hello"}}),
+                             Portal({.container = portal_target, .children = props.children}),
+                             Portal({.container = root, .children = props.children})}});
         };
 
-        render(Foo({}, View({}, "foobar")), scratch);
+        render(Foo({.children = {View({.children = {"foobar"}})}}), scratch);
         REQUIRE(renderer.inner_html() ==
                 "<view>foobar</view><view>foobar</view><view><text>Hello</text></view>");
 
@@ -405,27 +453,36 @@ TEST_CASE("portal into shared container") {
     }
 
     SECTION("should support nested portals") {
-        const FunctionComponent Bar = [](const Object&) -> VNode {
+        const FunctionComponent Bar = [](const HarnessProps&) -> VNode {
             auto [mounted, set_mounted] = use_state<bool>(false);
-            toggle_second = [set_mounted = set_mounted] {
+            toggle_second = [set_mounted] {
                 set_mounted(std::function<bool(const bool&)>([](const bool& state) { return !state; }));
             };
             ReferenceObject ref = use_ref(ReferenceObject{});
-            return View({{"ref", ref}},
-                     Text({}, "Inner"),
-                     when(mounted, [] { return portal(portal_target, Text({}, "hiFromBar")); }),
-                     when(mounted, [ref] { return portal(ref.current(), Text({}, "innerPortal")); }));
+            return View({.ref = ref,
+                         .children = {
+                             Text({.children = {"Inner"}}),
+                             when(mounted, [] {
+                                 return Portal({.container = portal_target,
+                                                .children = {Text({.children = {"hiFromBar"}})}});
+                             }),
+                             when(mounted, [ref] {
+                                 return Portal({.container = ref.current(),
+                                                .children = {Text({.children = {"innerPortal"}})}});
+                             })}});
         };
-        child_component = Bar;
 
-        const FunctionComponent Foo = [](const Object&) -> VNode {
+        const FunctionComponent Foo = [Bar](const HarnessProps&) -> VNode {
             auto [mounted, set_mounted] = use_state<bool>(false);
-            toggle = [set_mounted = set_mounted] {
+            toggle = [set_mounted] {
                 set_mounted(std::function<bool(const bool&)>([](const bool& state) { return !state; }));
             };
-            return View({},
-                     Text({}, "Hello"),
-                     when(mounted, [] { return portal(portal_target, child_component({})); }));
+            return View({.children = {
+                            Text({.children = {"Hello"}}),
+                            when(mounted, [Bar] {
+                                return Portal({.container = portal_target,
+                                               .children = {Bar({})}});
+                            })}});
         };
 
         render(Foo({}), scratch);
@@ -433,7 +490,8 @@ TEST_CASE("portal into shared container") {
 
         toggle();
         flush();
-        REQUIRE(renderer.inner_html() == "<view><text>Hello</text></view><view><text>Inner</text></view>");
+        REQUIRE(renderer.inner_html() ==
+                "<view><text>Hello</text></view><view><text>Inner</text></view>");
 
         toggle_second();
         flush();
@@ -448,61 +506,65 @@ TEST_CASE("portal into shared container") {
     SECTION("should support nested portals remounting #2669") {
         render_counter = 0;
 
-        const FunctionComponent NestedPortalHost = [](const Object& props) -> VNode {
-            bool show = props.get<bool>("show",false);
-            VNode inner_vnode = View({{"id", "inner"}}, std::to_string(render_counter));
+        const FunctionComponent NestedPortalHost = [](const ShowProps& props) -> VNode {
+            VNode inner_vnode =
+                View({.class_name = "inner", .children = {std::to_string(render_counter)}});
             ++render_counter;
             std::vector<VNode> outer_children;
             outer_children.push_back(std::to_string(render_counter));
-            if (show) outer_children.push_back(portal(portal_target, std::move(inner_vnode)));
-            VNode outer_vnode = View({{"id", "outer"}}, std::move(outer_children));
+            if (props.show)
+                outer_children.push_back(Portal(
+                    {.container = portal_target, .children = {std::move(inner_vnode)}}));
+            VNode outer_vnode =
+                View({.class_name = "outer", .children = std::move(outer_children)});
             ++render_counter;
-            return portal(portal_target, std::move(outer_vnode));
+            return Portal({.container = portal_target, .children = {std::move(outer_vnode)}});
         };
-        nested_portal_host_component = NestedPortalHost;
 
-        const FunctionComponent App = [](const Object&) -> VNode {
+        const FunctionComponent App = [NestedPortalHost](const HarnessProps&) -> VNode {
             auto [visible, set_visible_state] = use_state<bool>(true);
             set_visible = set_visible_state;
-            return View({{"id", "app"}}, "test", nested_portal_host_component({{"show", visible}}));
+            return View({.class_name = "app",
+                         .children = {"test", NestedPortalHost({.show = visible})}});
         };
 
         render(App({}), scratch);
         REQUIRE(renderer.inner_html() ==
-                "<view id=\"inner\">0</view><view id=\"outer\">1</view><view id=\"app\">test</view>");
+                "<view class=\"inner\">0</view><view class=\"outer\">1</view><view class=\"app\">test</view>");
 
         set_visible(false);
         flush();
-        REQUIRE(renderer.inner_html() == "<view id=\"outer\">3</view><view id=\"app\">test</view>");
+        REQUIRE(renderer.inner_html() ==
+                "<view class=\"outer\">3</view><view class=\"app\">test</view>");
 
         set_visible(true);
         flush();
         REQUIRE(renderer.inner_html() ==
-                "<view id=\"outer\">5</view><view id=\"app\">test</view><view id=\"inner\">4</view>");
+                "<view class=\"outer\">5</view><view class=\"app\">test</view><view class=\"inner\">4</view>");
 
         set_visible(false);
         flush();
-        REQUIRE(renderer.inner_html() == "<view id=\"outer\">7</view><view id=\"app\">test</view>");
+        REQUIRE(renderer.inner_html() ==
+                "<view class=\"outer\">7</view><view class=\"app\">test</view>");
     }
 
     SECTION("should switch between non portal and portal node (Modal as lastChild)") {
-        const FunctionComponent Modal = [](const Object& props) -> VNode {
-            bool open = props.get<bool>("open",false);
-            if (open) return portal(portal_target, View({}, children()));
-            return View({}, "Closed");
+        const FunctionComponent Modal = [](const ModalOpenProps& props) -> VNode {
+            if (props.open)
+                return Portal({.container = portal_target,
+                               .children = {View({.children = props.children})}});
+            return View({.children = {"Closed"}});
         };
-        modal_component = Modal;
 
-        const FunctionComponent App = [](const Object&) -> VNode {
+        const FunctionComponent App = [Modal](const HarnessProps&) -> VNode {
             auto [open, set_open] = use_state<bool>(false);
-            set_visible = set_open;
-            toggle = [set_visible = set_visible] {
-                set_visible(std::function<bool(const bool&)>([](const bool& state) { return !state; }));
+            toggle = [set_open] {
+                set_open(std::function<bool(const bool&)>([](const bool& state) { return !state; }));
             };
-            return View({},
-                     View({}, "Show"),
-                     open ? std::string("Open") : std::string("Closed"),
-                     modal_component({{"open", open}}, "Hello"));
+            return View({.children = {
+                            View({.children = {"Show"}}),
+                            open ? std::string("Open") : std::string("Closed"),
+                            Modal({.open = open, .children = {"Hello"}})}});
         };
 
         render(App({}), scratch);
@@ -516,23 +578,22 @@ TEST_CASE("portal into shared container") {
     }
 
     SECTION("should switch between non portal and portal node (Modal as firstChild)") {
-        const FunctionComponent Modal = [](const Object& props) -> VNode {
-            bool open = props.get<bool>("open",false);
-            if (open) return portal(portal_target, View({}, children()));
-            return View({}, "Closed");
+        const FunctionComponent Modal = [](const ModalOpenProps& props) -> VNode {
+            if (props.open)
+                return Portal({.container = portal_target,
+                               .children = {View({.children = props.children})}});
+            return View({.children = {"Closed"}});
         };
-        modal_component = Modal;
 
-        const FunctionComponent App = [](const Object&) -> VNode {
+        const FunctionComponent App = [Modal](const HarnessProps&) -> VNode {
             auto [open, set_open] = use_state<bool>(false);
-            set_visible = set_open;
-            toggle = [set_visible = set_visible] {
-                set_visible(std::function<bool(const bool&)>([](const bool& state) { return !state; }));
+            toggle = [set_open] {
+                set_open(std::function<bool(const bool&)>([](const bool& state) { return !state; }));
             };
-            return View({},
-                     modal_component({{"open", open}}, "Hello"),
-                     View({}, "Show"),
-                     open ? std::string("Open") : std::string("Closed"));
+            return View({.children = {
+                            Modal({.open = open, .children = {"Hello"}}),
+                            View({.children = {"Show"}}),
+                            open ? std::string("Open") : std::string("Closed")}});
         };
 
         render(App({}), scratch);
@@ -553,88 +614,82 @@ TEST_CASE("portal into shared container") {
     SECTION("should order effects well") {
         effect_call_order.clear();
 
-        const FunctionComponent ModalButton = [](const Object& props) -> VNode {
-            std::string index = props.get<std::string>("index","");
+        const FunctionComponent ModalButton = [](const IndexProps& props) -> VNode {
+            std::string index = props.index;
             use_effect([index]() -> CleanupFunction {
                 effect_call_order.push_back("Button " + index);
                 return {};
             }, {});
-            return View({}, "Action");
+            return View({.children = {"Action"}});
         };
-        modal_button_component = ModalButton;
 
-        const FunctionComponent Modal = [](const Object&) -> VNode {
+        const FunctionComponent Modal = [](const ChildrenProps& props) -> VNode {
             use_effect([]() -> CleanupFunction {
                 effect_call_order.push_back("Modal");
                 return {};
             }, {});
-            return portal(portal_target, View({{"class", "modal"}}, children()));
+            return Portal({.container = portal_target,
+                           .children = {View({.class_name = "modal", .children = props.children})}});
         };
-        modal_component = Modal;
 
-        const FunctionComponent App = [](const Object&) -> VNode {
+        const FunctionComponent App = [Modal, ModalButton](const HarnessProps&) -> VNode {
             use_effect([]() -> CleanupFunction {
                 effect_call_order.push_back("App");
                 return {};
             }, {});
-            return modal_component({},
-                     modal_button_component({{"index", "1"}}),
-                     modal_button_component({{"index", "2"}}));
+            return Modal({.children = {ModalButton({.index = "1"}), ModalButton({.index = "2"})}});
         };
 
         render(App({}), scratch);
 
-        REQUIRE(effect_call_order == std::vector<std::string>{"Button 1", "Button 2", "Modal", "App"});
+        REQUIRE(effect_call_order ==
+                std::vector<std::string>{"Button 1", "Button 2", "Modal", "App"});
     }
 
     SECTION("should order complex effects well") {
         effect_call_order.clear();
-        secondary_scratch = renderer.create_element("div", Object{});
+        secondary_scratch = renderer.create_element("div");
         renderer.insert_before(renderer.document(), secondary_scratch, null_dom_node);
 
-        const FunctionComponent Child = [](const Object& props) -> VNode {
-            std::string index = props.get<std::string>("index","");
-            bool is_portal = props.get<bool>("is_portal",false);
+        const FunctionComponent Child = [](const ComplexChildProps& props) -> VNode {
+            std::string index = props.index;
+            bool is_portal = props.is_portal;
             use_effect([index, is_portal]() -> CleanupFunction {
                 effect_call_order.push_back((is_portal ? std::string("Portal ") : std::string()) +
                                             "Child " + index);
                 return {};
             }, {index, is_portal});
-            return View({}, index);
+            return View({.children = {index}});
         };
-        child_component = Child;
 
-        const FunctionComponent Parent = [](const Object& props) -> VNode {
-            bool is_portal = props.get<bool>("is_portal",false);
+        const FunctionComponent Parent = [](const ComplexParentProps& props) -> VNode {
+            bool is_portal = props.is_portal;
             use_effect([is_portal]() -> CleanupFunction {
                 effect_call_order.push_back((is_portal ? std::string("Portal ") : std::string()) +
                                             "Parent");
                 return {};
             }, {is_portal});
-            return View({}, children());
+            return View({.children = props.children});
         };
-        parent_component = Parent;
 
-        const FunctionComponent PortalHost = [](const Object&) -> VNode {
+        const FunctionComponent PortalHost = [Parent, Child](const HarnessProps&) -> VNode {
             use_effect([]() -> CleanupFunction {
                 effect_call_order.push_back("Portal");
                 return {};
             }, {});
-            return portal(secondary_scratch,
-                     parent_component({{"is_portal", true}},
-                         child_component({{"index", "1"}, {"is_portal", true}}),
-                         child_component({{"index", "2"}, {"is_portal", true}}),
-                         child_component({{"index", "3"}, {"is_portal", true}})));
+            return Portal({.container = secondary_scratch,
+                           .children = {Parent(
+                               {.is_portal = true,
+                                .children = {Child({.index = "1", .is_portal = true}),
+                                             Child({.index = "2", .is_portal = true}),
+                                             Child({.index = "3", .is_portal = true})}})}});
         };
-        nested_portal_host_component = PortalHost;
 
-        const FunctionComponent App = [](const Object&) -> VNode {
+        const FunctionComponent App = [Parent, Child, PortalHost](const HarnessProps&) -> VNode {
             return fragment(
-                     parent_component({},
-                         child_component({{"index", "1"}}),
-                         child_component({{"index", "2"}}),
-                         child_component({{"index", "3"}})),
-                     nested_portal_host_component({}));
+                Parent({.children = {Child({.index = "1"}), Child({.index = "2"}),
+                                     Child({.index = "3"})}}),
+                PortalHost({}));
         };
 
         render(App({}), scratch);
@@ -648,22 +703,22 @@ TEST_CASE("portal into shared container") {
 
 TEST_CASE("portal context") {
     hosts::HtmlStringHost renderer;
-    portal_target = renderer.create_element("layer", Object{});
+    portal_target = renderer.create_element("layer");
     renderer.insert_before(renderer.document(), portal_target, null_dom_node);
     Container scratch = renderer.create_container();
 
     SECTION("reads context across the portal boundary") {
-        label_context = create_context<std::string>("default");
+        Context<std::string> label_context = create_context<std::string>("default");
 
-        const FunctionComponent Ported = [](const Object&) -> VNode {
-            return Text({{"class", "ported"}}, use_context(label_context));
+        const FunctionComponent Ported = [label_context](const HarnessProps&) -> VNode {
+            return Text({.class_name = "ported", .children = {use_context(label_context)}});
         };
-        child_component = Ported;
 
-        const FunctionComponent App = [](const Object&) -> VNode {
-            return provide(label_context, std::string("from-app"),
-                           View({{"class", "inline"}}),
-                           portal(portal_target, child_component({})));
+        const FunctionComponent App = [label_context, Ported](const HarnessProps&) -> VNode {
+            return label_context.Provider(
+                {.value = std::string("from-app"),
+                 .children = {View({.class_name = "inline"}),
+                              Portal({.container = portal_target, .children = {Ported({})}})}});
         };
 
         render(App({}), scratch);
@@ -679,9 +734,9 @@ TEST_CASE("use_document_event") {
     SECTION("delivers a document event to the handler and unsubscribes on unmount") {
         document_key.clear();
 
-        const FunctionComponent Listener = [](const Object&) -> VNode {
+        const FunctionComponent Listener = [](const HarnessProps&) -> VNode {
             use_document_event("key_down", [](const Event& event) { document_key = event.key; });
-            return View({{"class", "listener"}});
+            return View({.class_name = "listener"});
         };
 
         render(Listener({}), scratch);

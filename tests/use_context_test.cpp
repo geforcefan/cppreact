@@ -1,4 +1,5 @@
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
@@ -14,10 +15,22 @@
 using namespace cppreact;
 using namespace cppreact::tags;
 
+namespace {
+
+struct HarnessProps {
+    bool operator==(const HarnessProps&) const = default;
+};
+
+struct ValueProps {
+    int value = 0;
+};
+
 struct DefaultState {
     std::string state;
     bool operator==(const DefaultState&) const = default;
 };
+
+}
 
 static std::vector<int> values;
 static std::vector<std::pair<int, int>> pair_values;
@@ -27,8 +40,8 @@ static Context<int> number_context;
 static Context<int> foo_context;
 static Context<int> bar_context;
 static Context<DefaultState> state_context;
-static FunctionComponent consumer_component = nullptr;
-static FunctionComponent no_update_function = nullptr;
+static FunctionComponent<HarnessProps> consumer_component = nullptr;
+static FunctionComponent<HarnessProps> no_update_function = nullptr;
 static StateSetter<int> change_value;
 static StateSetter<bool> toggle_consumer;
 static StateSetter<DefaultState> set;
@@ -41,15 +54,15 @@ TEST_CASE("useContext") {
         values.clear();
         number_context = create_context(13);
 
-        const FunctionComponent TestComponent = [](const Object&) -> VNode {
+        const FunctionComponent TestComponent = [](const HarnessProps&) -> VNode {
             int value = use_context(number_context);
             values.push_back(value);
             return fragment();
         };
 
         render(TestComponent({}), scratch);
-        render(provide(number_context, 42, TestComponent({})), scratch);
-        render(provide(number_context, 69, TestComponent({})), scratch);
+        render(number_context.Provider({.value = 42, .children = {TestComponent({})}}), scratch);
+        render(number_context.Provider({.value = 69, .children = {TestComponent({})}}), scratch);
 
         REQUIRE(values == std::vector<int>{13, 42, 69});
     }
@@ -58,12 +71,16 @@ TEST_CASE("useContext") {
         values.clear();
         number_context = create_context(0);
 
-        const FunctionComponent App = [](const Object&) -> VNode {
+        const FunctionComponent App = [](const HarnessProps&) -> VNode {
             values.push_back(use_context(number_context));
-            return View({}, "bar");
+            return View({.children = {"bar"}});
         };
 
-        render(provide(number_context, 1, provide(number_context, 2, App({}))), scratch);
+        render(number_context.Provider(
+                   {.value = 1,
+                    .children = {number_context.Provider(
+                        {.value = 2, .children = {App({})}})}}),
+               scratch);
 
         REQUIRE(values == std::vector<int>{2});
     }
@@ -72,7 +89,7 @@ TEST_CASE("useContext") {
         values.clear();
         foo_context = create_context(42);
 
-        const FunctionComponent App = [](const Object&) -> VNode {
+        const FunctionComponent App = [](const HarnessProps&) -> VNode {
             values.push_back(use_context(foo_context));
             return View({});
         };
@@ -85,26 +102,26 @@ TEST_CASE("useContext") {
         values.clear();
         number_context = create_context(0);
 
-        const FunctionComponent TestComponent = [](const Object&) -> VNode {
+        const FunctionComponent TestComponent = [](const HarnessProps&) -> VNode {
             int value = use_context(number_context);
             values.push_back(value);
-            return Text({}, value);
+            return Text({.children = {value}});
         };
         consumer_component = TestComponent;
 
-        no_update_function = memo([](const Object&) -> VNode {
+        no_update_function = memo(FunctionComponent{[](const HarnessProps&) -> VNode {
             return consumer_component({});
-        });
+        }});
 
-        const FunctionComponent App = [](const Object& props) -> VNode {
-            int value = static_cast<int>(props.get<double>("value",0));
-            return provide(number_context, value, no_update_function({}));
+        const FunctionComponent App = [](const ValueProps& props) -> VNode {
+            return number_context.Provider(
+                {.value = props.value, .children = {no_update_function({})}});
         };
 
-        render(App({{"value", 0.0}}), scratch);
+        render(App({.value = 0}), scratch);
         REQUIRE(values == std::vector<int>{0});
 
-        render(App({{"value", 1.0}}), scratch);
+        render(App({.value = 1}), scratch);
         flush();
 
         REQUIRE(values == std::vector<int>{0, 1});
@@ -114,22 +131,22 @@ TEST_CASE("useContext") {
         values.clear();
         number_context = create_context(0);
 
-        const FunctionComponent TestComponent = [](const Object&) -> VNode {
+        const FunctionComponent TestComponent = [](const HarnessProps&) -> VNode {
             int value = use_context(number_context);
             values.push_back(value);
-            return Text({}, value);
+            return Text({.children = {value}});
         };
         consumer_component = TestComponent;
 
-        const FunctionComponent App = [](const Object& props) -> VNode {
-            int value = static_cast<int>(props.get<double>("value",0));
-            return provide(number_context, value, consumer_component({}));
+        const FunctionComponent App = [](const ValueProps& props) -> VNode {
+            return number_context.Provider(
+                {.value = props.value, .children = {consumer_component({})}});
         };
 
-        render(App({{"value", 0.0}}), scratch);
+        render(App({.value = 0}), scratch);
         REQUIRE(values == std::vector<int>{0});
 
-        render(App({{"value", 1.0}}), scratch);
+        render(App({.value = 1}), scratch);
         REQUIRE(values == std::vector<int>{0, 1});
 
         flush();
@@ -142,7 +159,7 @@ TEST_CASE("useContext") {
         foo_context = create_context(0);
         bar_context = create_context(10);
 
-        const FunctionComponent TestComponent = [](const Object&) -> VNode {
+        const FunctionComponent TestComponent = [](const HarnessProps&) -> VNode {
             int foo = use_context(foo_context);
             int bar = use_context(bar_context);
             pair_values.push_back({foo, bar});
@@ -150,11 +167,19 @@ TEST_CASE("useContext") {
             return View({});
         };
 
-        render(provide(foo_context, 0, provide(bar_context, 10, TestComponent({}))), scratch);
+        render(foo_context.Provider(
+                   {.value = 0,
+                    .children = {bar_context.Provider(
+                        {.value = 10, .children = {TestComponent({})}})}}),
+               scratch);
 
         REQUIRE(pair_values == std::vector<std::pair<int, int>>{{0, 10}});
 
-        render(provide(foo_context, 11, provide(bar_context, 42, TestComponent({}))), scratch);
+        render(foo_context.Provider(
+                   {.value = 11,
+                    .children = {bar_context.Provider(
+                        {.value = 42, .children = {TestComponent({})}})}}),
+               scratch);
 
         REQUIRE(pair_values == std::vector<std::pair<int, int>>{{0, 10}, {11, 42}});
         REQUIRE(unmount_calls == 0);
@@ -164,20 +189,22 @@ TEST_CASE("useContext") {
         inner_calls = 0;
         number_context = create_context(0);
 
-        const FunctionComponent Inner = [](const Object&) -> VNode {
+        const FunctionComponent Inner = [](const HarnessProps&) -> VNode {
             ++inner_calls;
             int value = use_context(number_context);
-            return View({}, value);
+            return View({.children = {value}});
         };
         consumer_component = Inner;
 
-        const FunctionComponent App = [](const Object&) -> VNode {
+        const FunctionComponent App = [](const HarnessProps&) -> VNode {
             auto [value, set_value] = use_state<int>(0);
             auto [show, set_show] = use_state<bool>(true);
             change_value = set_value;
             toggle_consumer = set_show;
-            return provide(number_context, value,
-                           View({}, when(show, [] { return consumer_component({}); })));
+            return number_context.Provider(
+                {.value = value,
+                 .children = {View({.children = {when(
+                                        show, [] { return consumer_component({}); })}})}});
         };
 
         render(App({}), scratch);
@@ -203,20 +230,20 @@ TEST_CASE("useContext") {
     SECTION("should rerender when reset to defaultValue") {
         state_context = create_context(DefaultState{"hi"});
 
-        const FunctionComponent Consumer = [](const Object&) -> VNode {
+        const FunctionComponent Consumer = [](const HarnessProps&) -> VNode {
             const DefaultState& context_value = use_context(state_context);
-            return Text({}, context_value.state);
+            return Text({.children = {context_value.state}});
         };
         consumer_component = Consumer;
 
-        no_update_function = memo([](const Object&) -> VNode {
+        no_update_function = memo(FunctionComponent{[](const HarnessProps&) -> VNode {
             return consumer_component({});
-        });
+        }});
 
-        const FunctionComponent Provider = [](const Object&) -> VNode {
+        const FunctionComponent Provider = [](const HarnessProps&) -> VNode {
             auto [state, set_state] = use_state<DefaultState>(DefaultState{"hi"});
             set = set_state;
-            return provide(state_context, state, no_update_function({}));
+            return state_context.Provider({.value = state, .children = {no_update_function({})}});
         };
 
         render(Provider({}), scratch);

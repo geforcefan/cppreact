@@ -1,6 +1,5 @@
 #include <cmath>
 #include <functional>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -17,10 +16,46 @@
 using namespace cppreact;
 using namespace cppreact::tags;
 
+namespace {
+
+struct HarnessProps {};
+
+struct RenderedItemProps {
+    bool render_as_null = false;
+    std::string item_id{};
+    std::string key{};
+};
+
+struct RetainProps {
+    std::string name{};
+};
+
+struct RetainFooProps {
+    bool condition = false;
+};
+
+struct StaleChildProps {
+    int count = 0;
+};
+
+struct FalsyItemProps {
+    int index = 0;
+};
+
+struct FalsyAppProps {
+    std::string activation{};
+};
+
+struct RemoveClassProps {
+    std::string class_name{};
+};
+
+}
+
 static VNode reconcile_list(const std::vector<std::string>& values) {
     std::vector<VNode> items;
-    for (const std::string& value : values) items.push_back(View({{"key", value}}, value));
-    return View({}, std::move(items));
+    for (const std::string& value : values) items.push_back(View({.key = value, .children = {value}}));
+    return View({.children = std::move(items)});
 }
 
 static std::string reconcile_list_html(const std::vector<std::string>& values) {
@@ -31,8 +66,8 @@ static std::string reconcile_list_html(const std::vector<std::string>& values) {
 
 static VNode shuffled_list(const std::vector<std::string>& keys) {
     std::vector<VNode> items;
-    for (const std::string& key : keys) items.push_back(View({{"key", key}}, key));
-    return View({}, std::move(items));
+    for (const std::string& key : keys) items.push_back(View({.key = key, .children = {key}}));
+    return View({.children = std::move(items)});
 }
 
 static std::string shuffled_list_html(const std::vector<std::string>& keys) {
@@ -41,66 +76,64 @@ static std::string shuffled_list_html(const std::vector<std::string>& keys) {
     return html + "</view>";
 }
 
-static const FunctionComponent MixedFoo = [](const Object&) -> VNode { return "d"; };
+static const FunctionComponent MixedFoo = [](const HarnessProps&) -> VNode { return "d"; };
 
-static const FunctionComponent RenderedItem = [](const Object& props) -> VNode {
-    bool render_as_null = props.get<bool>("render_as_null",false);
-    if (render_as_null) return fragment();
-    return View({}, props.get<std::string>("item_id",""));
+static const FunctionComponent RenderedItem = [](const RenderedItemProps& props) -> VNode {
+    if (props.render_as_null) return fragment();
+    return View({.children = {props.item_id}});
 };
 
 static VNode shrink_list(const std::vector<std::pair<std::string, bool>>& items) {
     std::vector<VNode> nodes;
     for (const auto& [item_id, render_as_null] : items) {
-        nodes.push_back(RenderedItem(
-            {{"key", item_id}, {"item_id", item_id}, {"render_as_null", render_as_null}}));
+        nodes.push_back(RenderedItem({.render_as_null = render_as_null,
+                                      .item_id = item_id,
+                                      .key = item_id}));
     }
-    return View({}, std::move(nodes));
+    return View({.children = std::move(nodes)});
 }
 
 static std::function<void()> update_reuse_x;
 static std::function<void()> update_reuse_app;
 
-static const FunctionComponent ReuseX = [](const Object&) -> VNode {
+static const FunctionComponent ReuseX = [](const HarnessProps&) -> VNode {
     auto [i, set_state] = use_state<int>(0);
     update_reuse_x = [set_state = set_state, i = i] { set_state(i + 1); };
-    return View({}, i);
+    return View({.children = {i}});
 };
 
-static const FunctionComponent ReuseApp = [](const Object&) -> VNode {
+static const FunctionComponent ReuseApp = [](const HarnessProps&) -> VNode {
     auto [i, set_state] = use_state<int>(0);
     update_reuse_app = [set_state = set_state, i = i] { set_state(i ^ 1); };
-    return View({}, when(i == 0, [] { return ReuseX({}); }), ReuseX({}));
+    return View({.children = {when(i == 0, [] { return ReuseX({}); }), ReuseX({})}});
 };
 
-static const FunctionComponent RetainX = [](const Object& props) -> VNode {
-    std::string& name = use_ref<std::string>(props.get<std::string>("name",""));
-    return Text({}, name);
+static const FunctionComponent RetainX = [](const RetainProps& props) -> VNode {
+    std::string& name = use_ref<std::string>(props.name);
+    return Text({.children = {name}});
 };
 
-static const FunctionComponent RetainFoo = [](const Object& props) -> VNode {
-    bool condition = props.get<bool>("condition",false);
-    if (condition) return View({}, Text({}), RetainX({{"name", std::string("B")}}));
-    return View({}, RetainX({{"name", std::string("A")}}));
+static const FunctionComponent RetainFoo = [](const RetainFooProps& props) -> VNode {
+    if (props.condition) return View({.children = {Text({}), RetainX({.name = "B"})}});
+    return View({.children = {RetainX({.name = "A"})}});
 };
 
 static int stale_render_count = 0;
 static std::function<void()> update_stale_app;
 static std::function<void()> update_stale_parent;
 
-static const FunctionComponent StaleChild = [](const Object& props) -> VNode {
-    int count = static_cast<int>(props.get<double>("count",0));
-    return when(count >= 3, [] { return View({}, "foo"); });
+static const FunctionComponent StaleChild = [](const StaleChildProps& props) -> VNode {
+    return when(props.count >= 3, [] { return View({.children = {"foo"}}); });
 };
 
-static const FunctionComponent StaleParent = [](const Object&) -> VNode {
+static const FunctionComponent StaleParent = [](const HarnessProps&) -> VNode {
     auto [tick, set_tick] = use_state<int>(0);
     update_stale_parent = [set_tick = set_tick, tick = tick] { set_tick(tick + 1); };
     ++stale_render_count;
-    return StaleChild({{"count", static_cast<double>(stale_render_count)}});
+    return StaleChild({.count = stale_render_count});
 };
 
-static const FunctionComponent StaleApp = [](const Object&) -> VNode {
+static const FunctionComponent StaleApp = [](const HarnessProps&) -> VNode {
     auto [tick, set_tick] = use_state<int>(0);
     update_stale_app = [set_tick = set_tick, tick = tick] { set_tick(tick + 1); };
     return StaleParent({});
@@ -108,22 +141,21 @@ static const FunctionComponent StaleApp = [](const Object&) -> VNode {
 
 static std::vector<std::string> falsy_actions;
 
-static const FunctionComponent FalsyComponent = [](const Object& props) -> VNode {
-    int index = static_cast<int>(props.get<double>("index",0));
+static const FunctionComponent FalsyComponent = [](const FalsyItemProps& props) -> VNode {
+    int index = props.index;
     use_effect(
         [index]() -> CleanupFunction {
             falsy_actions.push_back("mounted " + std::to_string(index));
             return {};
         },
         {});
-    return View({}, "Hello");
+    return View({.children = {"Hello"}});
 };
 
-static const FunctionComponent FalsyApp = [](const Object& props) -> VNode {
-    std::string y = props.get<std::string>("y","");
-    VNode first = y == "1" ? FalsyComponent({{"index", 1.0}}) : View({});
-    return View({}, std::move(first), fragment(), FalsyComponent({{"index", 2.0}}),
-               FalsyComponent({{"index", 3.0}}));
+static const FunctionComponent FalsyApp = [](const FalsyAppProps& props) -> VNode {
+    VNode first = props.activation == "1" ? FalsyComponent({.index = 1}) : View({});
+    return View({.children = {std::move(first), fragment(), FalsyComponent({.index = 2}),
+                             FalsyComponent({.index = 3})}});
 };
 
 TEST_CASE("render()") {
@@ -148,8 +180,8 @@ TEST_CASE("render()") {
     }
 
     SECTION("should allow node type change with content") {
-        render(Text({}, "Bad"), scratch);
-        render(View({}, "Good"), scratch);
+        render(Text({.children = {"Bad"}}), scratch);
+        render(View({.children = {"Good"}}), scratch);
         REQUIRE(renderer.inner_html() == "<view>Good</view>");
     }
 
@@ -163,16 +195,6 @@ TEST_CASE("render()") {
         REQUIRE(renderer2.inner_html() == "<text></text>");
     }
 
-    SECTION("should support custom tag names") {
-        render(h("foo"), scratch);
-        REQUIRE(renderer.inner_html() == "<foo></foo>");
-
-        hosts::HtmlStringHost renderer2;
-        Container scratch2 = renderer2.create_container();
-        render(h("x-bar"), scratch2);
-        REQUIRE(renderer2.inner_html() == "<x-bar></x-bar>");
-    }
-
     SECTION("should merge new elements when called multiple times") {
         render(View({}), scratch);
         REQUIRE(renderer.inner_html() == "<view></view>");
@@ -180,13 +202,8 @@ TEST_CASE("render()") {
         render(Text({}), scratch);
         REQUIRE(renderer.inner_html() == "<text></text>");
 
-        render(Text({{"class", "hello"}}, "Hello!"), scratch);
+        render(Text({.class_name = "hello", .children = {"Hello!"}}), scratch);
         REQUIRE(renderer.inner_html() == "<text class=\"hello\">Hello!</text>");
-    }
-
-    SECTION("should nest empty nodes") {
-        render(View({}, Text({}), h("foo"), h("x-bar")), scratch);
-        REQUIRE(renderer.inner_html() == "<view><text></text><foo></foo><x-bar></x-bar></view>");
     }
 
     SECTION("should render NaN as text content") {
@@ -218,7 +235,7 @@ TEST_CASE("render()") {
         mixed.push_back(0);
         mixed.push_back("a");
         mixed.push_back("b");
-        mixed.push_back(Text({}, "c"));
+        mixed.push_back(Text({.children = {"c"}}));
         mixed.push_back(MixedFoo({}));
         mixed.push_back(fragment());
         mixed.push_back(fragment());
@@ -230,25 +247,17 @@ TEST_CASE("render()") {
         REQUIRE(renderer.inner_html() == "0ab<text>c</text>def1");
     }
 
-    SECTION("should apply string attributes") {
-        render(View({{"foo", "bar"}, {"data-foo", "databar"}}), scratch);
-        REQUIRE(renderer.inner_html() == "<view data-foo=\"databar\" foo=\"bar\"></view>");
-    }
-
     SECTION("should apply class as String") {
-        render(View({{"class", "foo"}}), scratch);
+        render(View({.class_name = "foo"}), scratch);
         REQUIRE(renderer.inner_html() == "<view class=\"foo\"></view>");
     }
 
     SECTION("should remove class attributes") {
-        const FunctionComponent RemoveClassApp = [](const Object& props) -> VNode {
-            std::optional<std::string> class_name = props.get<std::string>("class");
-            Object div_props;
-            if (class_name) div_props.set("class", *class_name);
-            return View(div_props, Text({}, "Bye"));
+        const FunctionComponent RemoveClassApp = [](const RemoveClassProps& props) -> VNode {
+            return View({.class_name = props.class_name, .children = {Text({.children = {"Bye"}})}});
         };
 
-        render(RemoveClassApp({{"class", std::string("hi")}}), scratch);
+        render(RemoveClassApp({.class_name = "hi"}), scratch);
         REQUIRE(renderer.inner_html() == "<view class=\"hi\"><text>Bye</text></view>");
 
         render(RemoveClassApp({}), scratch);
@@ -256,12 +265,12 @@ TEST_CASE("render()") {
     }
 
     SECTION("should reorder child pairs") {
-        render(View({}, Text({}, "a"), Text({}, "b")), scratch);
+        render(View({.children = {Text({.children = {"a"}}), Text({.children = {"b"}})}}), scratch);
 
         DomNode a = renderer.find_first("a");
         DomNode b = renderer.find_first("b");
 
-        render(View({}, Text({}, "b"), Text({}, "a")), scratch);
+        render(View({.children = {Text({.children = {"b"}}), Text({.children = {"a"}})}}), scratch);
 
         REQUIRE(renderer.find_first("a") == a);
         REQUIRE(renderer.find_first("b") == b);
@@ -298,12 +307,16 @@ TEST_CASE("render()") {
     }
 
     SECTION("should reconcile children in right order #3") {
-        render(View({}, Text({}, "_A1"), Text({}, "_A2"), View({}, "_A3"), Text({}, "_A4"), View({}, "_A5"),
-                     Text({}, "_A6"), View({}, "_A7"), Text({}, "_A8")),
+        render(View({.children = {Text({.children = {"_A1"}}), Text({.children = {"_A2"}}),
+                                  View({.children = {"_A3"}}), Text({.children = {"_A4"}}),
+                                  View({.children = {"_A5"}}), Text({.children = {"_A6"}}),
+                                  View({.children = {"_A7"}}), Text({.children = {"_A8"}})}}),
                scratch);
 
-        render(View({}, Text({}, "_B1"), Text({}, "_B2"), Text({}, "_B3"), View({}, "_B4"), Text({}, "_B5"),
-                     Text({}, "_B6"), View({}, "_B7"), Text({}, "_B8")),
+        render(View({.children = {Text({.children = {"_B1"}}), Text({.children = {"_B2"}}),
+                                  Text({.children = {"_B3"}}), View({.children = {"_B4"}}),
+                                  Text({.children = {"_B5"}}), Text({.children = {"_B6"}}),
+                                  View({.children = {"_B7"}}), Text({.children = {"_B8"}})}}),
                scratch);
 
         REQUIRE(renderer.inner_html() ==
@@ -312,14 +325,21 @@ TEST_CASE("render()") {
     }
 
     SECTION("should reconcile children in right order #4") {
-        render(View({}, Text({}, "_A1"), Text({}, "_A2"), View({}, "_A3"), View({}, "_A4"), Text({}, "_A5"),
-                     View({}, "_A6"), View({}, "_A7"), Text({}, "_A8"), View({}, "_A9"), View({}, "_A10"),
-                     Text({}, "_A11"), View({}, "_A12")),
+        render(View({.children = {Text({.children = {"_A1"}}), Text({.children = {"_A2"}}),
+                                  View({.children = {"_A3"}}), View({.children = {"_A4"}}),
+                                  Text({.children = {"_A5"}}), View({.children = {"_A6"}}),
+                                  View({.children = {"_A7"}}), Text({.children = {"_A8"}}),
+                                  View({.children = {"_A9"}}), View({.children = {"_A10"}}),
+                                  Text({.children = {"_A11"}}), View({.children = {"_A12"}})}}),
                scratch);
 
-        render(View({}, Text({}, "_B1"), Text({}, "_B2"), Text({}, "_B3"), View({}, "_B4"), Text({}, "_B5"),
-                     Text({}, "_B6"), Text({}, "_B7"), View({}, "_B8"), Text({}, "_B9"), Text({}, "_B10"),
-                     Text({}, "_B11"), Text({}, "_B12"), View({}, "_B13")),
+        render(View({.children = {Text({.children = {"_B1"}}), Text({.children = {"_B2"}}),
+                                  Text({.children = {"_B3"}}), View({.children = {"_B4"}}),
+                                  Text({.children = {"_B5"}}), Text({.children = {"_B6"}}),
+                                  Text({.children = {"_B7"}}), View({.children = {"_B8"}}),
+                                  Text({.children = {"_B9"}}), Text({.children = {"_B10"}}),
+                                  Text({.children = {"_B11"}}), Text({.children = {"_B12"}}),
+                                  View({.children = {"_B13"}})}}),
                scratch);
 
         REQUIRE(renderer.inner_html() ==
@@ -375,7 +395,7 @@ TEST_CASE("render()") {
         render(RetainFoo({}), scratch);
         REQUIRE(renderer.inner_html() == "<view><text>A</text></view>");
 
-        render(RetainFoo({{"condition", true}}), scratch);
+        render(RetainFoo({.condition = true}), scratch);
         REQUIRE(renderer.inner_html() == "<view><text></text><text>A</text></view>");
 
         render(RetainFoo({}), scratch);
@@ -400,10 +420,10 @@ TEST_CASE("render()") {
     SECTION("should not remount components when replacing a component with a falsy value in-between") {
         falsy_actions.clear();
 
-        render(FalsyApp({{"y", std::string("1")}}), scratch);
+        render(FalsyApp({.activation = "1"}), scratch);
         REQUIRE(falsy_actions == std::vector<std::string>{"mounted 1", "mounted 2", "mounted 3"});
 
-        render(FalsyApp({{"y", std::string("2")}}), scratch);
+        render(FalsyApp({.activation = "2"}), scratch);
         REQUIRE(falsy_actions == std::vector<std::string>{"mounted 1", "mounted 2", "mounted 3"});
     }
 }

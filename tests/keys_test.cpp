@@ -12,15 +12,36 @@
 using namespace cppreact;
 using namespace cppreact::tags;
 
+namespace {
+
+struct StatefulProps {
+    std::string name{};
+    int position = 0;
+    std::string key{};
+};
+
+struct ConditionProps {
+    bool condition = false;
+};
+
+struct KeyedProps {
+    bool keyed = false;
+};
+
+struct MovedProps {
+    bool moved = false;
+};
+
+}
+
 static std::vector<std::string> ops;
 static int next_serial = 0;
 static int seen_serial[3] = {0, 0, 0};
-static bool saw_key_prop = false;
 
 static VNode list(const std::vector<std::string>& values) {
     std::vector<VNode> items;
-    for (const std::string& value : values) items.push_back(View({{"key", value}}, value));
-    return View({}, std::move(items));
+    for (const std::string& value : values) items.push_back(View({.key = value, .children = {value}}));
+    return View({.children = std::move(items)});
 }
 
 static std::string list_html(const std::vector<std::string>& values) {
@@ -38,66 +59,48 @@ static long count_log(const std::vector<std::string>& log, const std::string& pr
     return total;
 }
 
-static const FunctionComponent Stateful = [](const Object& props) -> VNode {
-    std::string name = props.get<std::string>("name","");
-    int position = static_cast<int>(props.get<double>("position",0));
+static const FunctionComponent Stateful = [](const StatefulProps& props) -> VNode {
     int& serial = use_ref<int>(0);
     if (serial == 0) serial = ++next_serial;
-    seen_serial[position] = serial;
+    seen_serial[props.position] = serial;
     use_effect(
-        [name]() -> CleanupFunction {
+        [name = props.name]() -> CleanupFunction {
             ops.push_back("Mount " + name);
             return [name] { ops.push_back("Unmount " + name); };
         },
         {});
-    return View({}, name);
+    return View({.children = {props.name}});
 };
 
 TEST_CASE("keys") {
     hosts::HtmlStringHost renderer;
     Container scratch = renderer.create_container();
 
-    SECTION("should not pass key in props") {
-        saw_key_prop = false;
-
-        const FunctionComponent Foo = [](const Object& props) -> VNode {
-            saw_key_prop = props.get("key") != nullptr;
-            return fragment();
-        };
-
-        render(Foo({{"key", "foo"}}), scratch);
-        REQUIRE(saw_key_prop == false);
-    }
-
     SECTION("should update in-place keyed DOM nodes") {
-        render(View({},
-                 View({{"key", "0"}}, "a"),
-                 View({{"key", "1"}}, "b"),
-                 View({{"key", "2"}}, "c")),
+        render(View({.children = {View({.key = "0", .children = {"a"}}),
+                                  View({.key = "1", .children = {"b"}}),
+                                  View({.key = "2", .children = {"c"}})}}),
                scratch);
         REQUIRE(renderer.inner_html() == "<view><view>a</view><view>b</view><view>c</view></view>");
 
         std::size_t start = renderer.log.size();
-        render(View({},
-                 View({{"key", "0"}}, "x"),
-                 View({{"key", "1"}}, "y"),
-                 View({{"key", "2"}}, "z")),
+        render(View({.children = {View({.key = "0", .children = {"x"}}),
+                                  View({.key = "1", .children = {"y"}}),
+                                  View({.key = "2", .children = {"z"}})}}),
                scratch);
         REQUIRE(renderer.inner_html() == "<view><view>x</view><view>y</view><view>z</view></view>");
         REQUIRE(count_log(renderer.log, "create", start) == 0);
     }
 
     SECTION("should remove orphaned keyed nodes") {
-        render(View({},
-                 View({}, 1),
-                 View({{"key", "a"}}, "a"),
-                 View({{"key", "b"}}, "b")),
+        render(View({.children = {View({.children = {1}}),
+                                  View({.key = "a", .children = {"a"}}),
+                                  View({.key = "b", .children = {"b"}})}}),
                scratch);
 
-        render(View({},
-                 View({}, 2),
-                 View({{"key", "b"}}, "b"),
-                 View({{"key", "c"}}, "c")),
+        render(View({.children = {View({.children = {2}}),
+                                  View({.key = "b", .children = {"b"}}),
+                                  View({.key = "c", .children = {"c"}})}}),
                scratch);
 
         REQUIRE(renderer.inner_html() == "<view><view>2</view><view>b</view><view>c</view></view>");
@@ -283,23 +286,22 @@ TEST_CASE("keys") {
         ops.clear();
         next_serial = 0;
 
-        const FunctionComponent Foo = [](const Object& props) -> VNode {
-            bool condition = props.get<bool>("condition",false);
-            if (condition) return Stateful({{"key", "a"}, {"name", "Stateful"}});
-            return Stateful({{"key", "b"}, {"name", "Stateful"}});
+        const FunctionComponent Foo = [](const ConditionProps& props) -> VNode {
+            if (props.condition) return Stateful({.name = "Stateful", .key = "a"});
+            return Stateful({.name = "Stateful", .key = "b"});
         };
 
-        render(Foo({{"condition", true}}), scratch);
+        render(Foo({.condition = true}), scratch);
         REQUIRE(renderer.inner_html() == "<view>Stateful</view>");
         REQUIRE(ops == std::vector<std::string>{"Mount Stateful"});
 
         ops.clear();
-        render(Foo({{"condition", false}}), scratch);
+        render(Foo({.condition = false}), scratch);
         REQUIRE(renderer.inner_html() == "<view>Stateful</view>");
         REQUIRE(ops == std::vector<std::string>{"Unmount Stateful", "Mount Stateful"});
 
         ops.clear();
-        render(Foo({{"condition", true}}), scratch);
+        render(Foo({.condition = true}), scratch);
         REQUIRE(renderer.inner_html() == "<view>Stateful</view>");
         REQUIRE(ops == std::vector<std::string>{"Unmount Stateful", "Mount Stateful"});
     }
@@ -308,22 +310,21 @@ TEST_CASE("keys") {
         ops.clear();
         next_serial = 0;
 
-        const FunctionComponent Foo = [](const Object& props) -> VNode {
-            bool keyed = props.get<bool>("keyed",false);
-            if (keyed) return Stateful({{"key", "a"}, {"name", "Stateful"}});
-            return Stateful({{"name", "Stateful"}});
+        const FunctionComponent Foo = [](const KeyedProps& props) -> VNode {
+            if (props.keyed) return Stateful({.name = "Stateful", .key = "a"});
+            return Stateful({.name = "Stateful"});
         };
 
-        render(Foo({{"keyed", true}}), scratch);
+        render(Foo({.keyed = true}), scratch);
         REQUIRE(renderer.inner_html() == "<view>Stateful</view>");
         REQUIRE(ops == std::vector<std::string>{"Mount Stateful"});
 
         ops.clear();
-        render(Foo({{"keyed", false}}), scratch);
+        render(Foo({.keyed = false}), scratch);
         REQUIRE(ops == std::vector<std::string>{"Unmount Stateful", "Mount Stateful"});
 
         ops.clear();
-        render(Foo({{"keyed", true}}), scratch);
+        render(Foo({.keyed = true}), scratch);
         REQUIRE(ops == std::vector<std::string>{"Unmount Stateful", "Mount Stateful"});
     }
 
@@ -331,33 +332,30 @@ TEST_CASE("keys") {
         ops.clear();
         next_serial = 0;
 
-        const FunctionComponent Foo = [](const Object& props) -> VNode {
-            bool moved = props.get<bool>("moved",false);
-            if (moved) {
-                return View({},
-                         View({}, 1),
-                         Stateful({{"key", "c"}, {"name", "Stateful1"}, {"position", 1.0}}),
-                         View({}, 2),
-                         Stateful({{"key", "d"}, {"name", "Stateful2"}, {"position", 2.0}}));
+        const FunctionComponent Foo = [](const MovedProps& props) -> VNode {
+            if (props.moved) {
+                return View({.children = {View({.children = {1}}),
+                                          Stateful({.name = "Stateful1", .position = 1, .key = "c"}),
+                                          View({.children = {2}}),
+                                          Stateful({.name = "Stateful2", .position = 2, .key = "d"})}});
             }
-            return View({},
-                     View({}, 1),
-                     Stateful({{"key", "a"}, {"name", "Stateful1"}, {"position", 1.0}}),
-                     View({}, 2),
-                     Stateful({{"key", "b"}, {"name", "Stateful2"}, {"position", 2.0}}));
+            return View({.children = {View({.children = {1}}),
+                                      Stateful({.name = "Stateful1", .position = 1, .key = "a"}),
+                                      View({.children = {2}}),
+                                      Stateful({.name = "Stateful2", .position = 2, .key = "b"})}});
         };
 
         const std::string expected_html =
             "<view><view>1</view><view>Stateful1</view><view>2</view><view>Stateful2</view></view>";
 
-        render(Foo({{"moved", false}}), scratch);
+        render(Foo({.moved = false}), scratch);
         REQUIRE(renderer.inner_html() == expected_html);
         REQUIRE(ops == std::vector<std::string>{"Mount Stateful1", "Mount Stateful2"});
         int first_serial1 = seen_serial[1];
         int first_serial2 = seen_serial[2];
 
         ops.clear();
-        render(Foo({{"moved", true}}), scratch);
+        render(Foo({.moved = true}), scratch);
         REQUIRE(renderer.inner_html() == expected_html);
         REQUIRE(ops == std::vector<std::string>{"Unmount Stateful1", "Unmount Stateful2",
                                                 "Mount Stateful1", "Mount Stateful2"});
@@ -369,20 +367,17 @@ TEST_CASE("keys") {
         ops.clear();
         next_serial = 0;
 
-        const FunctionComponent Foo = [](const Object& props) -> VNode {
-            bool moved = props.get<bool>("moved",false);
-            if (moved) {
-                return View({},
-                         View({}, 1),
-                         Stateful({{"key", "b"}, {"name", "Stateful2"}, {"position", 2.0}}),
-                         View({}, 2),
-                         Stateful({{"key", "a"}, {"name", "Stateful1"}, {"position", 1.0}}));
+        const FunctionComponent Foo = [](const MovedProps& props) -> VNode {
+            if (props.moved) {
+                return View({.children = {View({.children = {1}}),
+                                          Stateful({.name = "Stateful2", .position = 2, .key = "b"}),
+                                          View({.children = {2}}),
+                                          Stateful({.name = "Stateful1", .position = 1, .key = "a"})}});
             }
-            return View({},
-                     View({}, 1),
-                     Stateful({{"key", "a"}, {"name", "Stateful1"}, {"position", 1.0}}),
-                     View({}, 2),
-                     Stateful({{"key", "b"}, {"name", "Stateful2"}, {"position", 2.0}}));
+            return View({.children = {View({.children = {1}}),
+                                      Stateful({.name = "Stateful1", .position = 1, .key = "a"}),
+                                      View({.children = {2}}),
+                                      Stateful({.name = "Stateful2", .position = 2, .key = "b"})}});
         };
 
         const std::string html_for_false =
@@ -390,21 +385,21 @@ TEST_CASE("keys") {
         const std::string html_for_true =
             "<view><view>1</view><view>Stateful2</view><view>2</view><view>Stateful1</view></view>";
 
-        render(Foo({{"moved", false}}), scratch);
+        render(Foo({.moved = false}), scratch);
         REQUIRE(renderer.inner_html() == html_for_false);
         REQUIRE(ops == std::vector<std::string>{"Mount Stateful1", "Mount Stateful2"});
         int first_serial1 = seen_serial[1];
         int first_serial2 = seen_serial[2];
 
         ops.clear();
-        render(Foo({{"moved", true}}), scratch);
+        render(Foo({.moved = true}), scratch);
         REQUIRE(renderer.inner_html() == html_for_true);
         REQUIRE(ops == std::vector<std::string>{});
         REQUIRE(seen_serial[1] == first_serial1);
         REQUIRE(seen_serial[2] == first_serial2);
 
         ops.clear();
-        render(Foo({{"moved", false}}), scratch);
+        render(Foo({.moved = false}), scratch);
         REQUIRE(renderer.inner_html() == html_for_false);
         REQUIRE(ops == std::vector<std::string>{});
         REQUIRE(seen_serial[1] == first_serial1);

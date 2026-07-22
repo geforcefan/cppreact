@@ -38,10 +38,39 @@ struct MessageContextValue {
     std::function<void(MessageAction)> dispatch;
 };
 
+namespace {
+
+struct HarnessProps {};
+
+struct IncrementProps {
+    EventCallback on_increment{};
+};
+
+struct InitialCountProps {
+    int initial_count = 0;
+};
+
+struct IncrementValueProps {
+    int increment = 0;
+};
+
+struct WrapperProps {
+    Children children{};
+};
+
+struct AbstractionProps {
+    Children children{};
+};
+
+}
+
 static std::vector<CountState> states;
 static std::function<void(CountAction)> dispatch_action;
 static std::function<void(CountAction)> first_dispatch;
-static FunctionComponent child_component = nullptr;
+static FunctionComponent<IncrementProps> dispatch_child = nullptr;
+static FunctionComponent<HarnessProps> context_message_component = nullptr;
+static FunctionComponent<WrapperProps> wrapper_component = nullptr;
+static FunctionComponent<AbstractionProps> abstraction_component = nullptr;
 static Context<MessageContextValue> bad_context = create_context(MessageContextValue{});
 
 static CountState count_reducer(const CountState& state, const CountAction& action) {
@@ -56,7 +85,7 @@ TEST_CASE("useReducer") {
     SECTION("rerenders when dispatching an action") {
         states.clear();
 
-        const FunctionComponent TestComponent = [](const Object&) -> VNode {
+        const FunctionComponent TestComponent = [](const HarnessProps&) -> VNode {
             auto [state, dispatch] = use_reducer<CountState, CountAction>(count_reducer, CountState{0});
             dispatch_action = dispatch;
             states.push_back(state);
@@ -72,37 +101,35 @@ TEST_CASE("useReducer") {
     }
 
     SECTION("can be dispatched by another component") {
-        const FunctionComponent DispatchComponent = [](const Object& props) -> VNode {
-            return Input({{"on_click", props.get<Callback>("increment",Callback{})}},
-                     "Increment");
+        const FunctionComponent DispatchComponent = [](const IncrementProps& props) -> VNode {
+            return Input({.on_click = props.on_increment});
         };
-        child_component = DispatchComponent;
+        dispatch_child = DispatchComponent;
 
-        const FunctionComponent ReducerComponent = [](const Object&) -> VNode {
+        const FunctionComponent ReducerComponent = [](const HarnessProps&) -> VNode {
             auto [state, dispatch] = use_reducer<CountState, CountAction>(count_reducer, CountState{0});
-            return View({},
-                     Text({}, "Count: " + std::to_string(state.count)),
-                     child_component(
-                       {{"increment", Callback{[dispatch = dispatch](const Event&) {
-                           dispatch({"increment", 10});
-                       }}}}));
+            return View({.children = {
+                             Text({.children = {"Count: " + std::to_string(state.count)}}),
+                             dispatch_child({.on_increment = [dispatch = dispatch](const Event&) {
+                                 dispatch({"increment", 10});
+                             }})}});
         };
 
         render(ReducerComponent({}), scratch);
-        REQUIRE(renderer.inner_html() == "<view><text>Count: 0</text><input>Increment</input></view>");
+        REQUIRE(renderer.inner_html() == "<view><text>Count: 0</text><input></input></view>");
 
         DomNode button = renderer.find_first("input");
         renderer.dispatch_event(button, "click");
 
         flush();
-        REQUIRE(renderer.inner_html() == "<view><text>Count: 10</text><input>Increment</input></view>");
+        REQUIRE(renderer.inner_html() == "<view><text>Count: 10</text><input></input></view>");
     }
 
     SECTION("can lazily initialize its state with an action") {
         states.clear();
 
-        const FunctionComponent TestComponent = [](const Object& props) -> VNode {
-            int initial_count = static_cast<int>(props.get<double>("initial_count",0));
+        const FunctionComponent TestComponent = [](const InitialCountProps& props) -> VNode {
+            int initial_count = props.initial_count;
             auto [state, dispatch] = use_reducer<CountState, CountAction>(
                 count_reducer, [initial_count] { return CountState{initial_count}; });
             dispatch_action = dispatch;
@@ -110,7 +137,7 @@ TEST_CASE("useReducer") {
             return fragment();
         };
 
-        render(TestComponent({{"initial_count", 10.0}}), scratch);
+        render(TestComponent({.initial_count = 10}), scratch);
 
         dispatch_action({"increment", 10});
         flush();
@@ -121,7 +148,7 @@ TEST_CASE("useReducer") {
     SECTION("provides a stable reference for dispatch") {
         states.clear();
 
-        const FunctionComponent TestComponent = [](const Object&) -> VNode {
+        const FunctionComponent TestComponent = [](const HarnessProps&) -> VNode {
             auto [state, dispatch] = use_reducer<CountState, CountAction>(count_reducer, CountState{0});
             if (!first_dispatch) first_dispatch = dispatch;
             states.push_back(state);
@@ -141,8 +168,8 @@ TEST_CASE("useReducer") {
     SECTION("uses latest reducer") {
         states.clear();
 
-        const FunctionComponent TestComponent = [](const Object& props) -> VNode {
-            int increment = static_cast<int>(props.get<double>("increment",0));
+        const FunctionComponent TestComponent = [](const IncrementValueProps& props) -> VNode {
+            int increment = props.increment;
             auto [state, dispatch] = use_reducer<CountState, CountAction>(
                 [increment](const CountState& state, const CountAction& action) {
                     if (action.type == "increment") return CountState{state.count + increment};
@@ -154,8 +181,8 @@ TEST_CASE("useReducer") {
             return fragment();
         };
 
-        render(TestComponent({{"increment", 10.0}}), scratch);
-        render(TestComponent({{"increment", 20.0}}), scratch);
+        render(TestComponent({.increment = 10}), scratch);
+        render(TestComponent({.increment = 20}), scratch);
 
         dispatch_action({"increment"});
         flush();
@@ -164,7 +191,7 @@ TEST_CASE("useReducer") {
     }
 
     SECTION("should not mutate the hookState") {
-        const FunctionComponent ContextMessage = [](const Object&) -> VNode {
+        const FunctionComponent ContextMessage = [](const HarnessProps&) -> VNode {
             const MessageContextValue& value = use_context(bad_context);
             use_effect(
                 [dispatch = value.dispatch]() -> CleanupFunction {
@@ -174,16 +201,16 @@ TEST_CASE("useReducer") {
                 {});
 
             return when(!value.state.inner_message.empty(),
-                        [&] { return Text({}, value.state.inner_message); });
+                        [&] { return Text({.children = {value.state.inner_message}}); });
         };
-        child_component = ContextMessage;
+        context_message_component = ContextMessage;
 
-        const FunctionComponent Wrapper = [](const Object&) -> VNode {
-            return View({}, children());
+        const FunctionComponent Wrapper = [](const WrapperProps& props) -> VNode {
+            return View({.children = props.children});
         };
-        static FunctionComponent wrapper_component = Wrapper;
+        wrapper_component = Wrapper;
 
-        const FunctionComponent Abstraction = [](const Object&) -> VNode {
+        const FunctionComponent Abstraction = [](const AbstractionProps& props) -> VNode {
             auto [state, dispatch] = use_reducer<MessageState, MessageAction>(
                 [](const MessageState& state, const MessageAction& action) {
                     MessageState next = state;
@@ -191,13 +218,14 @@ TEST_CASE("useReducer") {
                     return next;
                 },
                 MessageState{});
-            return provide(bad_context, MessageContextValue{state, dispatch},
-                           wrapper_component({}, children()));
+            return bad_context.Provider(
+                {.value = MessageContextValue{state, dispatch},
+                 .children = {wrapper_component({.children = props.children})}});
         };
-        static FunctionComponent abstraction_component = Abstraction;
+        abstraction_component = Abstraction;
 
-        const FunctionComponent App = [](const Object&) -> VNode {
-            return abstraction_component({}, child_component({}));
+        const FunctionComponent App = [](const HarnessProps&) -> VNode {
+            return abstraction_component({.children = {context_message_component({})}});
         };
 
         render(App({}), scratch);
