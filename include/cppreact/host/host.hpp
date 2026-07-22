@@ -5,7 +5,7 @@
 #include <string_view>
 
 #include "dom.hpp"
-#include "../value/raw_payload.hpp"
+#include "../value/payload.hpp"
 #include "../value/value.hpp"
 
 namespace cppreact {
@@ -46,10 +46,8 @@ public:
   virtual DomNode document() = 0;
   virtual void focus(DomNode, bool) {}
 
-  virtual void update_layout() {}
-
-  virtual void set_native_property(DomNode, std::string_view, const RawPayload&) {}
-  virtual RawPayload native_reference(DomNode) { return {}; }
+  virtual void set_native_property(DomNode, std::string_view, const Payload&) {}
+  virtual Payload native_reference(DomNode) { return {}; }
   virtual void* native_element(DomNode) { return nullptr; }
 };
 

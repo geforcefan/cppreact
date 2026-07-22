@@ -12,6 +12,25 @@
 using namespace cppreact;
 using namespace cppreact::tags;
 
+namespace {
+
+struct HarnessProps {};
+
+struct PairProps {
+    double a = 0;
+    double b = 0;
+
+    bool operator==(const PairProps&) const = default;
+};
+
+struct ToggleProps {
+    bool all = false;
+
+    bool operator==(const ToggleProps&) const = default;
+};
+
+}
+
 static int memo_function_calls = 0;
 static std::vector<int> results;
 static std::vector<std::string> calls;
@@ -26,27 +45,25 @@ TEST_CASE("useMemo") {
         memo_function_calls = 0;
         results.clear();
 
-        const FunctionComponent TestComponent = [](const Object& props) -> VNode {
-            double a = props.get<double>("a",0);
-            double b = props.get<double>("b",0);
+        const FunctionComponent TestComponent = [](const PairProps& props) -> VNode {
             int result = use_memo<int>(
-                [a, b]() {
+                [a = props.a, b = props.b]() {
                     ++memo_function_calls;
                     return static_cast<int>(a + b);
                 },
-                {a, b});
+                {props.a, props.b});
             results.push_back(result);
             return fragment();
         };
 
-        render(TestComponent({{"a", 1.0}, {"b", 1.0}}), scratch);
-        render(TestComponent({{"a", 1.0}, {"b", 1.0}}), scratch);
+        render(TestComponent({.a = 1, .b = 1}), scratch);
+        render(TestComponent({.a = 1, .b = 1}), scratch);
 
         REQUIRE(results == std::vector<int>{2, 2});
         REQUIRE(memo_function_calls == 1);
 
-        render(TestComponent({{"a", 1.0}, {"b", 2.0}}), scratch);
-        render(TestComponent({{"a", 1.0}, {"b", 2.0}}), scratch);
+        render(TestComponent({.a = 1, .b = 2}), scratch);
+        render(TestComponent({.a = 1, .b = 2}), scratch);
 
         REQUIRE(results == std::vector<int>{2, 2, 3, 3});
         REQUIRE(memo_function_calls == 2);
@@ -55,9 +72,8 @@ TEST_CASE("useMemo") {
     SECTION("should rerun when the dependency list length changes") {
         memo_function_calls = 0;
 
-        const FunctionComponent TestComponent = [](const Object& props) -> VNode {
-            bool all = props.get<bool>("all",false);
-            Dependencies dependency_list = all ? Dependencies{1.0, 2.0} : Dependencies{1.0};
+        const FunctionComponent TestComponent = [](const ToggleProps& props) -> VNode {
+            Dependencies dependency_list = props.all ? Dependencies{1.0, 2.0} : Dependencies{1.0};
             use_memo<int>(
                 []() {
                     ++memo_function_calls;
@@ -67,16 +83,16 @@ TEST_CASE("useMemo") {
             return fragment();
         };
 
-        render(TestComponent({{"all", true}}), scratch);
+        render(TestComponent({.all = true}), scratch);
         REQUIRE(memo_function_calls == 1);
-        render(TestComponent({{"all", false}}), scratch);
+        render(TestComponent({.all = false}), scratch);
         REQUIRE(memo_function_calls == 2);
     }
 
     SECTION("should not commit memoization from a skipped render") {
         calls.clear();
 
-        const FunctionComponent App = [](const Object&) -> VNode {
+        const FunctionComponent App = [](const HarnessProps&) -> VNode {
             auto [greeting, set_greeting] = use_state<std::string>("hi");
             set = set_greeting;
 
@@ -92,7 +108,7 @@ TEST_CASE("useMemo") {
                 set_greeting("hi");
             }
 
-            return Text({}, value);
+            return Text({.children = {value}});
         };
 
         render(App({}), scratch);
@@ -105,7 +121,7 @@ TEST_CASE("useMemo") {
     }
 
     SECTION("should promote falsy value after a skipped render") {
-        const FunctionComponent App = [](const Object&) -> VNode {
+        const FunctionComponent App = [](const HarnessProps&) -> VNode {
             auto [v, set_value] = use_state<int>(0);
             update = set_value;
             int res = use_memo<int>([]() { return 0; }, {v > 1});
@@ -113,7 +129,7 @@ TEST_CASE("useMemo") {
             if (v == 0) {
                 set_value(v + 1);
             }
-            return Text({}, res);
+            return Text({.children = {res}});
         };
 
         render(App({}), scratch);

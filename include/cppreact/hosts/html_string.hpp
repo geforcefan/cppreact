@@ -44,10 +44,6 @@ public:
 
   Container create_container() { return Container{this, root_container, {}}; }
 
-  DomNode create_element(std::string_view tag, const Object&) {
-    return create_element(tag);
-  }
-
   DomNode create_element(std::string_view tag) override {
     DomNode id = next_id++;
     nodes[id] = StoredNode{id, false, std::string(tag), "", null_dom_node, {}, {}, {}, {}, {}};
@@ -176,25 +172,18 @@ public:
     if (entry != nodes[node].listeners.end()) entry->second.erase(token);
   }
 
-  void update_layout() override {
-    ++layout_updates;
-    log.push_back("update layout");
-  }
-
-  int layout_updates = 0;
-
   void register_native(std::string tag, NativeElement* element) {
     native_by_tag[std::move(tag)] = element;
   }
 
-  void set_native_property(DomNode node, std::string_view name, const RawPayload& value) override {
+  void set_native_property(DomNode node, std::string_view name, const Payload& value) override {
     auto entry = natives.find(node);
     if (entry != natives.end()) entry->second->set_native_property(name, value);
   }
 
-  RawPayload native_reference(DomNode node) override {
+  Payload native_reference(DomNode node) override {
     auto entry = natives.find(node);
-    return entry != natives.end() ? entry->second->native_reference() : RawPayload{};
+    return entry != natives.end() ? entry->second->native_reference() : Payload{};
   }
 
   std::string inner_html() { return inner_html(root_container); }

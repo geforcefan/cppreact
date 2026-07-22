@@ -45,14 +45,12 @@ inline void render_component(const std::shared_ptr<ComponentInstance>& component
   DomNode old_dom = first_dom(component->rendered);
 
   VNode new_vnode;
-  new_vnode.type = component->render_function;
-  new_vnode.props = component->props;
+  new_vnode.type = ComponentTag{component->render_function, component->props};
   new_vnode.depth = component->depth;
-  new_vnode.children = clone_vnodes(component->children);
   if (options().vnode) options().vnode(new_vnode);
 
   VNode old_vnode;
-  old_vnode.type = component->render_function;
+  old_vnode.type = ComponentTag{component->render_function, {}};
   old_vnode.component = component;
 
   component->rendering_self = true;

@@ -26,6 +26,7 @@ Unreal Engine 5 backend for RmlUi, stay tuned, that will be open sourced too).
 
 What you get:
 
+- typed props: components and elements take plain C++ structs, a typo is a compile error
 - the hooks you expect (`use_state`, `use_effect`, `use_memo` and friends, all listed below)
 - keyed lists, context, portals, synthetic events
 - native elements for the parts that draw their own pixels
@@ -74,8 +75,8 @@ carries a couple of bug fixes of mine that are not merged yet (open PRs
 
 ## Components
 
-A component is a function `VNode(const Object&)`. Wrap it in `FunctionComponent` and use it like
-any element, called with props and children:
+A component is a props struct and a function `VNode(const Props&)`. Wrap the function in
+`FunctionComponent` and call it with designated initializers:
 
 ```cpp
 #include "cppreact/cppreact.hpp"
@@ -83,91 +84,120 @@ any element, called with props and children:
 using namespace cppreact;
 using namespace cppreact::tags;
 
-const FunctionComponent Counter = [](const Object& props) -> VNode {
-  auto label = props.get<std::string>("label", "count");
-  std::optional<double> maximum = props.get<double>("maximum");
+struct CounterProps {
+  std::string label = "count";
+  std::optional<double> maximum{};
+};
 
+const FunctionComponent Counter = [](const CounterProps& props) -> VNode {
   auto [count, set_count] = use_state<int>(0);
 
-  auto increment = [=](const Event&) {
+  auto increment = [=, maximum = props.maximum](const Event&) {
     if (maximum && count >= *maximum) return;
     set_count(count + 1);
   };
 
-  return View({{"class", "counter"}},
-    Text({}, label, ": ", count),
-    View({{"on_click", increment}}, "increment"));
+  return View({.class_name = "counter",
+               .children = {Text({.children = {props.label, ": ", count}}),
+                            View({.on_click = increment, .children = {"increment"}})}});
 };
 ```
 
-A click runs the handler and `set_count` re-renders. Components go inside components:
+A click runs the handler and `set_count` re-renders. A misspelled field or a wrong type does not
+compile. Components go inside components:
 
 ```cpp
-const FunctionComponent App = [](const Object&) -> VNode {
-  return View({{"class", "app"}},
-    Counter({{"label", "left"}}),
-    Counter({{"label", "right"}, {"maximum", 10.0}}));
+struct AppProps {};
+
+const FunctionComponent App = [](const AppProps&) -> VNode {
+  return View({.class_name = "app",
+               .children = {Counter({.label = "left"}),
+                            Counter({.label = "right", .maximum = 10})}});
 };
 ```
 
-A component renders the children it was given with `children()`:
+Children are a field like any other. Declare `Children children{};` and the component decides
+where they land:
 
 ```cpp
-const FunctionComponent Card = [](const Object&) -> VNode {
-  return View({{"class", "card"}}, children());
+struct CardProps {
+  Children children{};
 };
 
-Card({}, Text({}, "inside"));
+const FunctionComponent Card = [](const CardProps& props) -> VNode {
+  return View({.class_name = "card", .children = {props.children}});
+};
+
+Card({.children = {Text({.children = {"inside"}})}});
 ```
 
-## Elements
-
-These components exist by default: `View`, `Text`, `Input`, `Textarea`, `Image`.
-
-Children are variadic and mix freely: strings and numbers turn into text nodes, elements and
-components nest, `nullptr` renders nothing.
-
-```cpp
-View({{"class", "row"}},
-  "hello",
-  42,
-  6.5,
-  Text({}, "an element"),
-  Counter({{"label", "a component"}}),
-  nullptr);
-```
-
-If you need your own tag names, call `h()` directly:
-
-```cpp
-h("chart", {{"class", "wide"}});
-```
+A struct can hold as many children slots as it wants: a `Children aside{}` next to
+`Children children{}` is two named slots, something the single JSX children list cannot say.
 
 ## Props
 
-Props are an untyped `Object`, so a component can carry anything:
+Props are your struct, so a field is whatever C++ type you need: an enum, a callback, a math
+vector, another struct. Defaults live in the field initializers, `std::optional` marks the truly
+optional ones, and three field names have built-in meaning when you declare them:
+
+- `key`: list identity, see [Lists](#lists)
+- `ref`: attaches to the created node, see [References](#references)
+- `children`: the nodes passed by the caller
+
+Give the struct a defaulted `operator==` and [memo](#memo) can compare it by value:
 
 ```cpp
-View({
-  {"class", "row"},
-  {"count", 3.0},
-  {"on_click", [](const Event&) { submit(); }},
-  {"style", {{"width", "50%"}, {"color", "red"}}},
-  {"model", RawPayload{model}},
-});
+struct RowProps {
+  std::string label{};
+  int count = 0;
+  std::string key{};
+  Children children{};
+
+  bool operator==(const RowProps&) const = default;
+};
 ```
 
-Read them typed:
+`Children` compares as equal only when both sides are empty, so a memoized component with real
+children re-renders, exactly like React. A `Callback` field compares by identity: the same one
+again changed nothing, a fresh one did.
+
+## Elements
+
+These elements exist by default: `View`, `Text`, `Input`, `Textarea`, `Image`. Each one is a
+props struct too, and the struct is the contract: `class_name`, `style`, the event handlers the
+element actually supports, and on the form controls `value`, `checked`, `disabled`, `type`.
+
+Children mix freely: strings and numbers turn into text nodes, elements and components nest,
+`nullptr` renders nothing.
 
 ```cpp
-std::string label_with_fallback = props.get<std::string>("label", "fallback");
-std::optional<double> optional_minimum = props.get<double>("minimum");
-auto on_change = props.get<void(double)>("on_change", {});
-const Value* raw_count = props.get("count");
+View({.class_name = "row",
+      .children = {"hello",
+                   42,
+                   6.5,
+                   Text({.children = {"an element"}}),
+                   Counter({.label = "a component"}),
+                   nullptr}});
 ```
 
-- a `Callback` compares by identity: the same one again changed nothing, a fresh one did
-- a `RawPayload` too, c++react never looks inside
+`style` is per-node styling, name and value strings of your host's styling system:
+
+```cpp
+View({.style = {{"width", "50%"}, {"color", "red"}}});
+```
+
+An input with a `value` set is controlled: c++react holds it to the props value against user
+edits, leave `value` unset for an uncontrolled input:
+
+```cpp
+Input({.type = "text",
+       .value = draft,
+       .on_change = [=](const Event& event) { set_draft(event.value); }});
+```
+
+If you need your own element, define it: a props struct, an `apply_props_to_dom` overload that
+maps fields to host calls, and an `Element`. That is the whole mechanism the built-in five use, see
+[Native elements](#native-elements) for the typical case.
 
 ## Hooks
 
@@ -213,13 +243,17 @@ int counter_reducer(const int& count, const CounterAction& action) {
   return count;
 }
 
-const FunctionComponent Counter = [](const Object&) -> VNode {
+struct CounterProps {};
+
+const FunctionComponent Counter = [](const CounterProps&) -> VNode {
   auto [count, dispatch] = use_reducer<int, CounterAction>(counter_reducer, 0);
 
-  return View({},
-    Text({}, count),
-    View({{"on_click", [=](const Event&) { dispatch(IncrementAction{10}); }}}, "+10"),
-    View({{"on_click", [=](const Event&) { dispatch(ResetAction{}); }}}, "reset"));
+  return View({.children = {
+    Text({.children = {count}}),
+    View({.on_click = [=](const Event&) { dispatch(IncrementAction{10}); },
+          .children = {"+10"}}),
+    View({.on_click = [=](const Event&) { dispatch(ResetAction{}); },
+          .children = {"reset"}})}});
 };
 ```
 
@@ -291,21 +325,21 @@ Subscribes to an external store and re-renders when the snapshot changes.
 
 ### References
 
-References come in two forms, and the `ref` prop takes either one directly. The object form is
+References come in two forms, and the `ref` field takes either one directly. The object form is
 `ReferenceObject`: copies all point at the same node, `current()` reads it. Hold it in
 `use_ref` so it survives re-renders:
 
 ```cpp
 ReferenceObject reference = use_ref(ReferenceObject{});
 
-return View({{"ref", reference}, {"class", "panel"}}, "...");
+return View({.ref = reference, .class_name = "panel", .children = {"..."}});
 ```
 
 The function form is a `Callback` taking a `DomNode`. It is called with the node on attach
 and with `null_dom_node` on detach:
 
 ```cpp
-View({{"ref", Callback{[](DomNode node) { ... }}}});
+View({.ref = Callback{[](DomNode node) { ... }}});
 ```
 
 References compare by identity: a stable reference of either form never re-fires across
@@ -316,24 +350,23 @@ reference is only nulled while it still points at the dying node.
 reading the display density, imperative animation, goes through the node the reference hands you:
 resolve it with `Host::native_element(node)` and talk to your toolkit directly.
 
-On an element, `ref` attaches to the created node. On a component, `ref` is just another prop.
-The component copies it onto whichever element it wants to expose, without
-caring which form it holds:
+On an element, `ref` attaches to the created node. On a component, declare a `Reference ref{}`
+field and copy it onto whichever element you want to expose, without caring which form it holds:
 
 ```cpp
-const FunctionComponent Field = [](const Object& props) -> VNode {
-  Object inner{{"class", "field"}, {"type", "text"}};
-  if (const Value* reference = props.get("ref")) inner.set("ref", *reference);
+struct FieldProps {
+  Reference ref{};
+};
 
-  return Input(std::move(inner));
+const FunctionComponent Field = [](const FieldProps& props) -> VNode {
+  return Input({.class_name = "field", .type = "text", .ref = props.ref});
 };
 
 ReferenceObject reference = use_ref(ReferenceObject{});
-Field({{"ref", reference}});
+Field({.ref = reference});
 ```
 
-A component that ignores its `ref` prop attaches nothing, exactly like a component that ignores any
-other prop.
+A component without a `ref` field attaches nothing, and its type says so.
 
 ### use_document_event
 
@@ -350,28 +383,27 @@ An event listener on the document. Bound once, always calls the latest handler, 
 ```cpp
 const auto theme = create_context<std::string>("light");
 
-provide(theme, std::string("dark"), App({}));
+theme.Provider({.value = "dark", .children = {App({})}});
 
 const std::string& value = use_context(theme);
 ```
 
-`provide` publishes a value for its subtree, `use_context` reads the nearest one. A consumer
+The `Provider` publishes a value for its subtree, `use_context` reads the nearest one. A consumer
 subscribes to the provider, so when the value changes every consumer re-renders, even behind a
-memoized component that skips its own render.
+memoized component that skips its own render. Change means value change: a context type with an
+`operator==` only notifies its consumers when the compared value actually differs.
 
 ## Lists
 
 Give items a `key`. Add, remove and reorder then keep the matching instances and their state, moving
-only what actually moved. The `map` helper turns a range into a list of nodes:
+only what actually moved. The `map` helper turns a range into a list of nodes, and a built vector
+moves straight into a children field:
 
 ```cpp
-View({{"class", "list"}}, map(items, [](const auto& item) {
-  return Row({{"key", item.id}, {"label", item.name}});
-}));
-
-map(items, [](const auto& item, std::size_t i) {
-  return Row({{"key", item.id}, {"index", double(i)}});
-});
+View({.class_name = "list",
+      .children = map(items, [](const auto& item) {
+        return Row({.label = item.name, .key = item.id});
+      })});
 ```
 
 ## Conditionals
@@ -380,27 +412,31 @@ map(items, [](const auto& item, std::size_t i) {
 skip the work when it is false:
 
 ```cpp
-View({{"class", "row"}},
-  Text({}, label),
-  when(expanded, [] { return View({{"class", "detail"}}, "more"); }));
+View({.class_name = "row",
+      .children = {Text({.children = {label}}),
+                   when(expanded, [] {
+                     return View({.class_name = "detail", .children = {"more"}});
+                   })}});
 ```
 
 ## Events
 
-A handler is `void(const Event&)`, wired through a prop named for the event:
+A handler is `void(const Event&)`, wired through the element's handler field. Each element
+declares the events it supports; the full vocabulary:
 
-- `on_click`
+- `on_click`, `on_double_click`
 - `on_mouse_down`, `on_mouse_up`, `on_mouse_move`, `on_mouse_over`, `on_mouse_out`
 - `on_key_down`, `on_key_up`
 - `on_wheel`
 - `on_focus`, `on_blur`
-- `on_change`
+- `on_change` (form controls)
 
 Append `_capture` to listen in the capture phase:
 
 ```cpp
-View({{"on_click", bubbled}, {"on_click_capture", first}},
-  View({{"on_click", pressed}}, "ok"));
+View({.on_click = bubbled,
+      .on_click_capture = first,
+      .children = {View({.on_click = pressed, .children = {"ok"}})}});
 ```
 
 Capture handlers run on the way down to the target, before it: a click on the inner element runs
@@ -418,7 +454,7 @@ struct Event {
   std::string key;
   std::string value;
   double delta_x, delta_y;
-  RawPayload native;
+  Payload native;
 
   void prevent_default() const;
   void stop_propagation() const;
@@ -439,12 +475,12 @@ fields above do not cover. The rest of the host event surface is there too (`but
 `event_phase`, `get_modifier_state`), a host fills what it can.
 
 ```cpp
-Callback zoom = [set_scale](const Event& event) {
+EventCallback zoom = [set_scale](const Event& event) {
   event.prevent_default();
   set_scale([delta = event.delta_y](double scale) { return scale - delta * 0.001; });
 };
 
-return View({{"class", "graph"}, {"on_wheel", zoom}}, children());
+return View({.class_name = "graph", .on_wheel = zoom, .children = {props.children}});
 ```
 
 For a listener on the document instead of an element, see
@@ -452,15 +488,16 @@ For a listener on the document instead of an element, see
 
 ## Portals
 
-`portal` renders a subtree into a different container:
+`Portal` renders a subtree into a different container:
 
 ```cpp
-return View({{"class", "row"}},
-  Text({}, "row"),
-  portal(overlay_layer, Tooltip({{"text", "on top of everything"}})));
+return View({.class_name = "row",
+             .children = {Text({.children = {"row"}}),
+                          Portal({.container = overlay_layer,
+                                  .children = {Tooltip({.text = "on top of everything"})}})}});
 ```
 
-Context still flows from where the `portal` call sits, not from the target.
+Context still flows from where the `Portal` sits, not from the target.
 
 ## Hosts
 
@@ -473,7 +510,7 @@ toolkit.
 
 hosts::HtmlStringHost host;
 Container root = host.create_container();
-render(View({{"class", "x"}}, "hi"), root);
+render(View({.class_name = "x", .children = {"hi"}}), root);
 
 host.inner_html();   // <view class="x">hi</view>
 ```
@@ -496,11 +533,6 @@ directly.
 `set_state` queues a re-render; nothing happens until you call `flush()`, which batches the queued
 updates into one render. Call it wherever it fits, a render loop calls it once per frame.
 
-A host may override `update_layout()` to bring its native tree's layout up to date. The commit
-calls it once per batch before layout effects run, and only when layout effects are pending. The
-RmlUi host updates the owner document there, the html-string host counts the calls in
-`layout_updates`. The default is a no-op.
-
 To write your own host, implement `Host`. `hosts/html_string.hpp` is the reference to read.
 
 ## Native elements
@@ -510,15 +542,31 @@ implements `NativeElement`, and the host registers its tag as native:
 
 ```cpp
 struct NativeElement {
-  virtual void set_native_property(std::string_view name, const RawPayload& value);
-  virtual RawPayload native_reference();
+  virtual void set_native_property(std::string_view name, const Payload& value);
+  virtual Payload native_reference();
 };
 ```
 
-A component feeds it a `RawPayload` prop (curve samples, a model) and reads a handle back through
-a `ref`. c++react only ever moves the `RawPayload`, never a toolkit type.
+On the component side it is a custom element with a typed field. A `Payload` carries any C++
+value type-erased, compares by value when the type can, and c++react never looks inside:
+
+```cpp
+struct ChartProps {
+  Payload samples{};
+};
+
+inline void apply_props_to_dom(Host& host, DomNode dom, const ChartProps& next,
+                               const ChartProps* old) {
+  apply_native_property_to_dom(host, dom, "samples", next.samples, old ? &old->samples : nullptr);
+}
+
+inline const Element<ChartProps> Chart{"chart"};
+
+Chart({.samples = make_payload(curve_samples)});
+```
+
+Read a handle back through a `ref` and `native_reference` when the drawing side exposes one.
 
 ## License
 
-MIT, see [LICENSE](LICENSE). The test suite is ported from
-[Preact's test suite](https://github.com/preactjs/preact/tree/main/hooks/test/browser) (MIT).
+MIT, see [LICENSE](LICENSE).

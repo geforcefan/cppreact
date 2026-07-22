@@ -30,4 +30,6 @@ inline bool has_reference(const Reference& reference) {
   return std::holds_alternative<ReferenceObject>(reference);
 }
 
+inline ReferenceObject create_ref() { return ReferenceObject{}; }
+
 }

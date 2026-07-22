@@ -6,7 +6,6 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "cppreact/event/synthetic_event.hpp"
-#include "cppreact/value/object.hpp"
 #include "cppreact/value/value.hpp"
 
 using namespace cppreact;
@@ -52,17 +51,17 @@ TEST_CASE("values") {
         REQUIRE_FALSE(values_equal(Value{std::string("steel")}, Value{"wood"}));
     }
 
-    SECTION("objects compare by identity, not content") {
-        std::shared_ptr<Object> style = object({{"left", "4px"}});
-        REQUIRE(values_equal(Value{style}, Value{style}));
-        REQUIRE_FALSE(values_equal(Value{style}, Value{object({{"left", "4px"}})}));
+    SECTION("comparable payloads compare by value") {
+        Payload first = make_payload(7);
+        Payload second = make_payload(7);
+        Payload third = make_payload(8);
+        REQUIRE(values_equal(Value{first}, Value{second}));
+        REQUIRE_FALSE(values_equal(Value{first}, Value{third}));
     }
 
-    SECTION("raw payloads compare by identity, not content") {
-        RawPayload first{std::make_shared<int>(7)};
-        RawPayload second{std::make_shared<int>(7)};
-        REQUIRE(values_equal(Value{first}, Value{first}));
-        REQUIRE_FALSE(values_equal(Value{first}, Value{second}));
+    SECTION("payloads of different types are never equal") {
+        struct Force { double value = 0; bool operator==(const Force&) const = default; };
+        REQUIRE_FALSE(values_equal(Value{make_payload(7)}, Value{make_payload(Force{7})}));
     }
 
     SECTION("callbacks compare by identity, any signature") {

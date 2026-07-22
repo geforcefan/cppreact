@@ -216,25 +216,6 @@ inline void install_hooks() {
   };
 
   hooked.commit = [old_commit](VNode& root, const CommitQueue& commit_queue) {
-    std::vector<Host*> layout_ready;
-    for (const std::weak_ptr<ComponentInstance>& entry : commit_queue) {
-      std::shared_ptr<ComponentInstance> component = entry.lock();
-      if (!component || !component->host) continue;
-      bool has_layout_effects = false;
-      for (const RenderCallback& render_callback : component->render_callbacks) {
-        if (render_callback.hook_index >= 0) {
-          has_layout_effects = true;
-          break;
-        }
-      }
-      if (!has_layout_effects) continue;
-      if (std::find(layout_ready.begin(), layout_ready.end(), component->host) !=
-          layout_ready.end())
-        continue;
-      component->host->update_layout();
-      layout_ready.push_back(component->host);
-    }
-
     for (const std::weak_ptr<ComponentInstance>& entry : commit_queue) {
       std::shared_ptr<ComponentInstance> component = entry.lock();
       if (!component || !component->hooks) continue;

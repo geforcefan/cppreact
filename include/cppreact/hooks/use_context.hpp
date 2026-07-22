@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <memory>
-#include <variant>
 
 #include "../context/create_context.hpp"
 
@@ -24,10 +23,10 @@ const T& use_context(const Context<T>& context) {
     if (provider->sub) provider->sub(detail::current_component->shared_from_this());
   }
 
-  const Value* value = provider->props.get("value");
-  const RawPayload* payload = value ? std::get_if<RawPayload>(value) : nullptr;
-  if (!payload || !payload->data) return *context.default_value;
-  return *std::static_pointer_cast<T>(payload->data);
+  std::shared_ptr<const ProviderProps<T>> stored =
+      payload_as<ProviderProps<T>>(provider->props);
+  if (!stored) return *context.default_value;
+  return stored->value;
 }
 
 }

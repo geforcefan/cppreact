@@ -13,6 +13,12 @@
 using namespace cppreact;
 using namespace cppreact::tags;
 
+namespace {
+
+struct HarnessProps {};
+
+}
+
 struct Store {
     int selected = 0;
     int other = 0;
@@ -25,7 +31,7 @@ struct Store {
 static Store store;
 static int render_count = 0;
 
-static const FunctionComponent SelectedView = [](const Object&) -> VNode {
+static const FunctionComponent SelectedView = [](const HarnessProps&) -> VNode {
     ++render_count;
     int value = use_sync_external_store(
         [](std::function<void()> on_change) -> CleanupFunction {
@@ -33,7 +39,7 @@ static const FunctionComponent SelectedView = [](const Object&) -> VNode {
             return [] {};
         },
         [] { return store.selected; });
-    return View({}, value);
+    return View({.children = {value}});
 };
 
 TEST_CASE("useSyncExternalStore") {

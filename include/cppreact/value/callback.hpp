@@ -42,12 +42,6 @@ struct callback_signature<std::function<Signature>> {
   using type = Signature;
 };
 
-template <class T>
-struct is_callback_signature : std::is_function<T> {};
-
-template <class Signature>
-struct is_callback_signature<std::function<Signature>> : std::true_type {};
-
 }
 
 class Callback {

@@ -5,7 +5,7 @@
 #include <string_view>
 
 #include "../host/dom.hpp"
-#include "../value/raw_payload.hpp"
+#include "../value/payload.hpp"
 
 namespace cppreact {
 
@@ -52,7 +52,7 @@ struct SyntheticEvent {
   std::string data{};
   std::string value{};
 
-  RawPayload native{};
+  Payload native{};
   std::function<void()> native_prevent_default{};
   std::function<void()> native_stop_propagation{};
 

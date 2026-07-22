@@ -77,10 +77,19 @@ inline Rml::String rml_element_tag(std::string_view tag) {
 
 inline Rml::String rml_event_name(std::string_view name) {
   static const std::unordered_map<std::string, Rml::String> mapping = {
-      {"click", "click"},          {"mouse_down", "mousedown"}, {"mouse_up", "mouseup"},
-      {"mouse_move", "mousemove"}, {"mouse_over", "mouseover"}, {"mouse_out", "mouseout"},
-      {"key_down", "keydown"},     {"key_up", "keyup"},         {"wheel", "mousescroll"},
-      {"focus", "focus"},          {"blur", "blur"},            {"change", "change"},
+      {"click", "click"},
+      {"double_click", "dblclick"},
+      {"mouse_down", "mousedown"},
+      {"mouse_up", "mouseup"},
+      {"mouse_move", "mousemove"},
+      {"mouse_over", "mouseover"},
+      {"mouse_out", "mouseout"},
+      {"key_down", "keydown"},
+      {"key_up", "keyup"},
+      {"wheel", "mousescroll"},
+      {"focus", "focus"},
+      {"blur", "blur"},
+      {"change", "change"},
   };
   auto entry = mapping.find(std::string(name));
   return entry == mapping.end() ? Rml::String() : entry->second;
@@ -290,20 +299,14 @@ public:
     }
   }
 
-  void update_layout() override {
-    Rml::Element* element = get_element(document_handle);
-    if (!element) return;
-    if (Rml::ElementDocument* owner = element->GetOwnerDocument()) owner->UpdateDocument();
-  }
-
-  void set_native_property(DomNode node, std::string_view name, const RawPayload& value) override {
+  void set_native_property(DomNode node, std::string_view name, const Payload& value) override {
     auto entry = natives.find(node);
     if (entry != natives.end()) entry->second->set_native_property(name, value);
   }
 
-  RawPayload native_reference(DomNode node) override {
+  Payload native_reference(DomNode node) override {
     auto entry = natives.find(node);
-    return entry != natives.end() ? entry->second->native_reference() : RawPayload{};
+    return entry != natives.end() ? entry->second->native_reference() : Payload{};
   }
 
   void* native_element(DomNode node) override { return get_element(node); }

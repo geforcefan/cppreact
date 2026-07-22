@@ -46,44 +46,58 @@ auto remove_todo(int id) {
   };
 }
 
-const FunctionComponent TodoItem = [](const Object& props) -> VNode {
-  auto title = props.get<std::string>("title","");
-  auto done = props.get<bool>("done",false);
-  auto toggle = props.get<Callback>("on_toggle",Callback{});
-  auto remove = props.get<Callback>("on_remove",Callback{});
-
-  return View({{"class", done ? "todo done" : "todo"}},
-    Text({{"class", "status"}, {"on_click", toggle}}),
-    Text({{"class", "title"}, {"on_click", toggle}}, title),
-    Text({{"class", "remove"}, {"on_click", remove}}, "x"));
+struct TodoItemProps {
+  std::string title{};
+  bool done = false;
+  EventCallback on_toggle{};
+  EventCallback on_remove{};
+  std::string key{};
 };
 
-const FunctionComponent App = [](const Object&) -> VNode {
+const FunctionComponent TodoItem = [](const TodoItemProps& props) -> VNode {
+  return View({.class_name = props.done ? "todo done" : "todo",
+               .children = {Text({.class_name = "status", .on_click = props.on_toggle}),
+                            Text({.class_name = "title",
+                                  .on_click = props.on_toggle,
+                                  .children = {props.title}}),
+                            Text({.class_name = "remove",
+                                  .on_click = props.on_remove,
+                                  .children = {"x"}})}});
+};
+
+struct AppProps {};
+
+const FunctionComponent App = [](const AppProps&) -> VNode {
   auto [todos, set_todos] = use_state<std::vector<Todo>>({});
   auto [draft, set_draft] = use_state<std::string>("");
 
   auto open = std::count_if(todos.begin(), todos.end(),
                             [](const Todo& todo) { return !todo.done; });
 
-  return View({{"class", "card"}},
-    View({{"class", "heading"}}, "todos"),
-    Input({{"type", "text"}, {"value", draft},
-           {"on_key_down", [=](const Event& event) {
-              if (event.key != "enter" || draft.empty()) return;
-              set_todos(create_todo(draft));
-              set_draft("");
-            }},
-           {"on_change", [=](const Event& event) { set_draft(event.value); }}}),
-    View({{"class", "todos"}}, map(todos, [=](const Todo& todo) {
-      return TodoItem({{"key", std::to_string(todo.id)},
-                       {"title", todo.title},
-                       {"done", todo.done},
-                       {"on_toggle", [=](const Event&) { set_todos(toggle_todo(todo.id)); }},
-                       {"on_remove", [=](const Event&) { set_todos(remove_todo(todo.id)); }}});
-    })),
-    when(todos.empty(), View({{"class", "footer"}}, "nothing to do, add one above")),
-    when(!todos.empty(),
-         [open] { return View({{"class", "footer"}}, open, " open"); }));
+  return View({.class_name = "card",
+               .children = {
+    View({.class_name = "heading", .children = {"todos"}}),
+    Input({.type = "text",
+           .value = draft,
+           .on_key_down = [=, todos = todos, draft = draft](const Event& event) {
+             if (event.key != "enter" || draft.empty()) return;
+             set_todos(create_todo(draft));
+             set_draft("");
+           },
+           .on_change = [=](const Event& event) { set_draft(event.value); }}),
+    View({.class_name = "todos",
+          .children = map(todos, [=](const Todo& todo) {
+            return TodoItem({.title = todo.title,
+                             .done = todo.done,
+                             .on_toggle = [=](const Event&) { set_todos(toggle_todo(todo.id)); },
+                             .on_remove = [=](const Event&) { set_todos(remove_todo(todo.id)); },
+                             .key = std::to_string(todo.id)});
+          })}),
+    when(todos.empty(),
+         View({.class_name = "footer", .children = {"nothing to do, add one above"}})),
+    when(!todos.empty(), [open] {
+      return View({.class_name = "footer", .children = {open, " open"}});
+    })}});
 };
 
 static Rml::Context* refresh_context = nullptr;

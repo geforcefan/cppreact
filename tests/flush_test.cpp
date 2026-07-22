@@ -12,22 +12,28 @@
 using namespace cppreact;
 using namespace cppreact::tags;
 
+namespace {
+
+struct HarnessProps {};
+
+}
+
 static std::function<void(int)> counter_set;
 static int parent_renders = 0;
 static int child_renders = 0;
 static std::function<void(int)> parent_set;
 static std::function<void(int)> child_set;
-static FunctionComponent child_component = nullptr;
+static FunctionComponent<HarnessProps> child_component = nullptr;
 
 TEST_CASE("flush") {
     hosts::HtmlStringHost renderer;
     Container scratch = renderer.create_container();
 
     SECTION("set_state queues and one flush drains it") {
-        const FunctionComponent Counter = [](const Object&) -> VNode {
+        const FunctionComponent Counter = [](const HarnessProps&) -> VNode {
             auto [count, set_count] = use_state<int>(0);
             counter_set = [set_count = set_count](int value) { set_count(value); };
-            return View({}, count);
+            return View({.children = {count}});
         };
 
         render(Counter({}), scratch);
@@ -44,19 +50,19 @@ TEST_CASE("flush") {
         parent_renders = 0;
         child_renders = 0;
 
-        const FunctionComponent Child = [](const Object&) -> VNode {
+        const FunctionComponent Child = [](const HarnessProps&) -> VNode {
             auto [value, set_value] = use_state<int>(0);
             ++child_renders;
             child_set = [set_value = set_value](int next) { set_value(next); };
-            return Text({}, value);
+            return Text({.children = {value}});
         };
         child_component = Child;
 
-        const FunctionComponent Parent = [](const Object&) -> VNode {
+        const FunctionComponent Parent = [](const HarnessProps&) -> VNode {
             auto [value, set_value] = use_state<int>(0);
             ++parent_renders;
             parent_set = [set_value = set_value](int next) { set_value(next); };
-            return View({}, child_component({}));
+            return View({.children = {child_component({})}});
         };
 
         render(Parent({}), scratch);

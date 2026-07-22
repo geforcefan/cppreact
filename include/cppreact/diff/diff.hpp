@@ -10,10 +10,11 @@
 
 #include "../component/component.hpp"
 #include "../component/flags.hpp"
+#include "../component/fragment.hpp"
 #include "../vnode/options.hpp"
 #include "../host/host.hpp"
 #include "children.hpp"
-#include "props.hpp"
+#include "../host/appliers.hpp"
 
 namespace cppreact {
 
@@ -32,14 +33,6 @@ inline std::map<const void*, std::function<void()>>& reference_cleanups() {
   return cleanups;
 }
 
-inline bool is_falsy(const Value& value) {
-  if (std::holds_alternative<std::monostate>(value)) return true;
-  if (const bool* boolean = std::get_if<bool>(&value)) return !*boolean;
-  if (const double* number = std::get_if<double>(&value)) return *number == 0;
-  if (const std::string* text = std::get_if<std::string>(&value)) return text->empty();
-  return false;
-}
-
 }
 
 inline DomNode diff(Host& host, DomNode parent_dom, VNode& new_vnode,
@@ -49,24 +42,22 @@ inline DomNode diff(Host& host, DomNode parent_dom, VNode& new_vnode,
   if (options().diff) options().diff(new_vnode);
 
   if (is_component(new_vnode)) {
-    const FunctionComponent new_type = std::get<FunctionComponent>(new_vnode.type);
+    ComponentTag& new_tag = std::get<ComponentTag>(new_vnode.type);
 
     std::shared_ptr<ComponentInstance> component;
     if (old_vnode.component) {
       component = new_vnode.component = old_vnode.component;
     } else {
       component = new_vnode.component = std::make_shared<ComponentInstance>();
-      component->render_function = new_type;
+      component->render_function = new_tag.render;
       component->global_context = global_context;
       component->flags |= component_flag::dirty;
     }
 
     if (old_vnode.component) {
       if (!(component->flags & component_flag::force) && component->should_component_update &&
-          !component->should_component_update(new_vnode.props, new_vnode.children)) {
-        component->props = new_vnode.props;
-        component->children = std::move(new_vnode.children);
-        new_vnode.children.clear();
+          !component->should_component_update(new_tag.props)) {
+        component->props = new_tag.props;
         component->flags &= static_cast<std::uint8_t>(~component_flag::dirty);
 
         if (!component->render_callbacks.empty()) {
@@ -86,33 +77,28 @@ inline DomNode diff(Host& host, DomNode parent_dom, VNode& new_vnode,
       }
 
       if (component->component_will_update) {
-        component->component_will_update(new_vnode.props);
+        component->component_will_update(new_tag.props);
       }
     }
 
     component->global_context = global_context;
-    component->props = new_vnode.props;
+    component->props = new_tag.props;
     component->host = &host;
     component->parent_dom = parent_dom;
     component->depth = new_vnode.depth;
     component->flags &= static_cast<std::uint8_t>(~component_flag::force);
-    component->children = std::move(new_vnode.children);
-    new_vnode.children.clear();
 
-    std::int32_t count = 0;
+    std::int32_t render_attempts = 0;
     VNode render_result_vnode;
     do {
       component->flags &= static_cast<std::uint8_t>(~component_flag::dirty);
       if (options().render) options().render(new_vnode);
 
       ComponentInstance* previous_rendering = detail::current_rendering;
-      std::vector<VNode>* previous_children = detail::current_children;
       detail::current_rendering = component.get();
-      detail::current_children = &component->children;
-      render_result_vnode = new_type.render(component->props);
+      render_result_vnode = (*component->render_function)(component->props);
       detail::current_rendering = previous_rendering;
-      detail::current_children = previous_children;
-    } while ((component->flags & component_flag::dirty) && ++count < 25);
+    } while ((component->flags & component_flag::dirty) && ++render_attempts < 25);
 
     GlobalContext child_global_context = global_context;
     if (component->get_child_context) {
@@ -122,7 +108,7 @@ inline DomNode diff(Host& host, DomNode parent_dom, VNode& new_vnode,
 
     std::vector<VNode> render_result;
     if (is_component(render_result_vnode) &&
-        std::get<FunctionComponent>(render_result_vnode.type) == Fragment &&
+        std::get<ComponentTag>(render_result_vnode.type).render == Fragment.render_function() &&
         render_result_vnode.key.empty()) {
       render_result = std::move(render_result_vnode.children);
     } else if (is_fragment(render_result_vnode)) {
@@ -154,9 +140,6 @@ inline DomNode diff_element_nodes(Host& host, DomNode dom, VNode& new_vnode,
                                      VNode& old_vnode, const GlobalContext& global_context,
                                      CommitQueue& commit_queue,
                                      ReferenceQueue& reference_queue) {
-  Object& old_props = old_vnode.props;
-  Object& new_props = new_vnode.props;
-
   if (is_text(new_vnode)) {
     const std::string& new_text = std::get<TextTag>(new_vnode.type).text;
     if (dom == null_dom_node) {
@@ -169,55 +152,25 @@ inline DomNode diff_element_nodes(Host& host, DomNode dom, VNode& new_vnode,
     return dom;
   }
 
-  if (dom == null_dom_node) {
-    dom = host.create_element(std::get<ElementTag>(new_vnode.type).tag);
-  }
+  if (is_element(new_vnode)) {
+    ElementTag& new_tag = std::get<ElementTag>(new_vnode.type);
 
-  for (const auto& [name, value] : old_props) {
-    if (!new_props.get(name)) {
-      set_property(host, dom, name, Value{}, value);
+    if (dom == null_dom_node) {
+      dom = host.create_element(new_tag.tag);
     }
-  }
 
-  Value input_value{};
-  bool has_input_value = false;
-  Value checked{};
-  bool has_checked = false;
+    const ElementTag* old_tag =
+        is_element(old_vnode) ? &std::get<ElementTag>(old_vnode.type) : nullptr;
+    const Payload* old_props =
+        old_tag && old_tag->tag == new_tag.tag ? &old_tag->props : nullptr;
 
-  for (const auto& [name, value] : new_props) {
-    if (name == "value") {
-      input_value = value;
-      has_input_value = true;
-    } else if (name == "checked") {
-      checked = value;
-      has_checked = true;
-    } else {
-      const Value* old_value = old_props.get(name);
-      if (!old_value || !values_equal(*old_value, value)) {
-        set_property(host, dom, name, value, old_value ? *old_value : Value{});
-      }
+    if (new_tag.apply) {
+      new_tag.apply(host, dom, new_tag.props, old_props);
     }
   }
 
   diff_children(host, dom, new_vnode, old_vnode.children, global_context, commit_queue,
                 first_dom(old_vnode.children), reference_queue);
-
-  const std::string& tag = std::get<ElementTag>(new_vnode.type).tag;
-
-  if (tag == "progress" && (!has_input_value || std::holds_alternative<std::monostate>(input_value))) {
-    host.set_property(dom, "value", Value{});
-  } else if (has_input_value) {
-    if (!values_equal(input_value, host.property_value(dom, "value")) ||
-               (tag == "progress" && detail::is_falsy(input_value))) {
-      set_property(host, dom, "value", input_value,
-                   old_props.get("value") ? *old_props.get("value") : Value{});
-    }
-  }
-
-  if (has_checked && !values_equal(checked, host.property_value(dom, "checked"))) {
-    set_property(host, dom, "checked", checked,
-                 old_props.get("checked") ? *old_props.get("checked") : Value{});
-  }
 
   return dom;
 }

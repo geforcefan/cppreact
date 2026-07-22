@@ -24,7 +24,6 @@ static std::string expected_html;
 static FunctionComponent grand_child_component = nullptr;
 static FunctionComponent child_component = nullptr;
 static hosts::HtmlStringHost* renderer_pointer = nullptr;
-static int expected_layout_updates = 0;
 
 static Value callback_ref(const std::string& name) {
     return Callback{[name](DomNode node) {
@@ -423,54 +422,6 @@ TEST_CASE("useLayoutEffect") {
         set("bye");
         flush();
         REQUIRE(calls == std::vector<std::string>{"doing effecthi"});
-    }
-
-    SECTION("updates the renderer layout once per commit before layout effects run") {
-        callback_calls = 0;
-        renderer.layout_updates = 0;
-
-        const FunctionComponent Child = [](const Object&) -> VNode {
-            use_layout_effect([]() -> CleanupFunction {
-                REQUIRE(renderer_pointer->layout_updates == expected_layout_updates);
-                ++callback_calls;
-                return {};
-            });
-            return fragment();
-        };
-        child_component = Child;
-
-        const FunctionComponent Parent = [](const Object&) -> VNode {
-            use_layout_effect([]() -> CleanupFunction {
-                ++callback_calls;
-                return {};
-            });
-            return View({}, child_component({}), child_component({}));
-        };
-
-        expected_layout_updates = 1;
-        render(Parent({}), scratch);
-        REQUIRE(callback_calls == 3);
-        REQUIRE(renderer.layout_updates == 1);
-
-        expected_layout_updates = 2;
-        render(Parent({}), scratch);
-        REQUIRE(callback_calls == 6);
-        REQUIRE(renderer.layout_updates == 2);
-
-        render(fragment(), scratch);
-        REQUIRE(renderer.layout_updates == 2);
-    }
-
-    SECTION("does not update the renderer layout without pending layout effects") {
-        renderer.layout_updates = 0;
-
-        const FunctionComponent Plain = [](const Object&) -> VNode {
-            use_effect([]() -> CleanupFunction { return {}; });
-            return Text({}, "plain");
-        };
-
-        render(Plain({}), scratch);
-        REQUIRE(renderer.layout_updates == 0);
     }
 
     SECTION("should run layout effects after all refs are invoked") {

@@ -10,6 +10,12 @@
 
 using namespace cppreact;
 
+namespace {
+
+struct HarnessProps {};
+
+}
+
 static std::vector<int> values;
 static std::vector<std::optional<int>> optional_values;
 
@@ -20,7 +26,7 @@ TEST_CASE("useRef") {
     SECTION("provides a stable reference") {
         values.clear();
 
-        const FunctionComponent TestComponent = [](const Object&) -> VNode {
+        const FunctionComponent TestComponent = [](const HarnessProps&) -> VNode {
             int& ref = use_ref<int>(1);
             values.push_back(ref);
             ref = 2;
@@ -36,7 +42,7 @@ TEST_CASE("useRef") {
     SECTION("defaults to an empty value") {
         optional_values.clear();
 
-        const FunctionComponent TestComponent = [](const Object&) -> VNode {
+        const FunctionComponent TestComponent = [](const HarnessProps&) -> VNode {
             std::optional<int>& ref = use_ref<std::optional<int>>(std::nullopt);
             optional_values.push_back(ref);
             ref = 2;

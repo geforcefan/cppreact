@@ -4,38 +4,59 @@
 #include <functional>
 #include <memory>
 #include <type_traits>
+#include <utility>
 
-#include "../value/object.hpp"
+#include "../value/payload.hpp"
 
 namespace cppreact {
 
 struct VNode;
 
+namespace detail {
+
+using ComponentRender = std::shared_ptr<std::function<VNode(const Payload&)>>;
+
+template <class Render>
+struct render_properties {};
+
+template <class Lambda, class Properties>
+struct render_properties<VNode (Lambda::*)(const Properties&) const> {
+  using type = Properties;
+};
+
+}
+
+template <class Properties>
 class FunctionComponent {
 public:
   FunctionComponent() = default;
   FunctionComponent(std::nullptr_t) {}
 
-  template <class Render,
-            std::enable_if_t<std::conjunction_v<
-                                 std::negation<std::is_same<std::decay_t<Render>, FunctionComponent>>,
-                                 std::negation<std::is_same<std::decay_t<Render>, std::nullptr_t>>,
-                                 std::is_invocable<std::decay_t<Render>&, const Object&>>,
-                             int> = 0>
-  FunctionComponent(Render render)
-      : function(std::make_shared<std::function<VNode(const Object&)>>(std::move(render))) {}
+  template <class Render>
+    requires(!std::is_same_v<std::decay_t<Render>, FunctionComponent<Properties>> &&
+             !std::is_same_v<std::decay_t<Render>, std::nullptr_t> &&
+             std::is_invocable_r_v<VNode, const std::decay_t<Render>&, const Properties&>)
+  FunctionComponent(Render render);
 
-  template <class... Children>
-  VNode operator()(Object props = {}, Children&&... children) const;
+  explicit FunctionComponent(detail::ComponentRender wrapped)
+      : component_render(std::move(wrapped)) {}
 
-  VNode render(const Object& properties) const;
+  VNode operator()(Properties properties = {}) const;
 
-  explicit operator bool() const { return function != nullptr; }
+  const detail::ComponentRender& render_function() const { return component_render; }
 
-  bool operator==(const FunctionComponent& other) const { return function == other.function; }
+  explicit operator bool() const { return component_render != nullptr; }
+
+  bool operator==(const FunctionComponent& other) const {
+    return component_render == other.component_render;
+  }
 
 private:
-  std::shared_ptr<std::function<VNode(const Object&)>> function{};
+  detail::ComponentRender component_render{};
 };
+
+template <class Render>
+FunctionComponent(Render)
+    -> FunctionComponent<typename detail::render_properties<decltype(&Render::operator())>::type>;
 
 }

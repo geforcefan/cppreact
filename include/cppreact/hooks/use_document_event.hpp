@@ -12,14 +12,15 @@ inline Host* current_component_host() {
   return detail::current_component ? detail::current_component->host : nullptr;
 }
 
-inline void use_document_event(const std::string& type, EventCallback handler) {
+inline void use_document_event(const std::string& type, EventCallback handler,
+                               bool enabled = true) {
   Host* host = current_component_host();
   EventCallback& latest = use_ref<EventCallback>(EventCallback{});
   latest = std::move(handler);
   EventCallback* latest_pointer = &latest;
   use_effect(
-      [host, type, latest_pointer]() -> CleanupFunction {
-        if (!host) return {};
+      [host, type, latest_pointer, enabled]() -> CleanupFunction {
+        if (!host || !enabled) return {};
         DomNode document = host->document();
         EventListenerToken token = host->add_event_listener(
             document, type,
@@ -32,7 +33,7 @@ inline void use_document_event(const std::string& type, EventCallback handler) {
           host->remove_event_listener(document, type, token);
         };
       },
-      {});
+      {enabled});
 }
 
 }

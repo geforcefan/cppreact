@@ -12,10 +12,12 @@
 
 #include "reference.hpp"
 #include "../component/function_component.hpp"
-#include "../value/object.hpp"
+#include "../host/dom.hpp"
+#include "../value/payload.hpp"
 
 namespace cppreact {
 
+class Host;
 struct ComponentInstance;
 
 namespace detail {
@@ -30,23 +32,31 @@ inline std::string number_to_text(double value) {
 
 }
 
+using ElementApplier = void (*)(Host&, DomNode, const Payload&, const Payload*);
+
 struct TextTag {
   std::string text{};
 };
 
 struct ElementTag {
   std::string tag{};
+  Payload props{};
+  ElementApplier apply = nullptr;
+};
+
+struct ComponentTag {
+  detail::ComponentRender render{};
+  Payload props{};
 };
 
 struct FragmentTag {};
 
 struct NullTag {};
 
-using VNodeType = std::variant<TextTag, ElementTag, FunctionComponent, FragmentTag, NullTag>;
+using VNodeType = std::variant<TextTag, ElementTag, ComponentTag, FragmentTag, NullTag>;
 
 struct VNode {
   VNodeType type{FragmentTag{}};
-  Object props{};
   std::string key{};
   Reference ref{};
   std::vector<VNode> children{};
@@ -74,7 +84,7 @@ struct VNode {
 inline bool is_text(const VNode& node) { return std::holds_alternative<TextTag>(node.type); }
 inline bool is_element(const VNode& node) { return std::holds_alternative<ElementTag>(node.type); }
 inline bool is_component(const VNode& node) {
-  return std::holds_alternative<FunctionComponent>(node.type);
+  return std::holds_alternative<ComponentTag>(node.type);
 }
 inline bool is_fragment(const VNode& node) {
   return std::holds_alternative<FragmentTag>(node.type);

@@ -4,6 +4,7 @@
 #include <utility>
 #include <vector>
 
+#include "component/fragment.hpp"
 #include "diff/diff.hpp"
 
 namespace cppreact {
@@ -26,7 +27,7 @@ inline void render(VNode vnode, Container& container) {
 
   std::vector<VNode> root_children;
   root_children.push_back(std::move(vnode));
-  VNode new_root = h(Fragment, Object{}, std::move(root_children));
+  VNode new_root = Fragment(FragmentProps{.children = Children(std::move(root_children))});
 
   CommitQueue commit_queue;
   ReferenceQueue reference_queue;

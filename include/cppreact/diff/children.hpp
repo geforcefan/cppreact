@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -8,6 +9,7 @@
 #include <vector>
 
 #include "../component/component.hpp"
+#include "../component/fragment.hpp"
 #include "../vnode/flags.hpp"
 #include "../host/host.hpp"
 
@@ -67,8 +69,8 @@ inline int find_matching_index(const VNode& child_vnode, const std::vector<VNode
     if (const ElementTag* element = std::get_if<ElementTag>(&left)) {
       return element->tag == std::get<ElementTag>(right).tag;
     }
-    if (const FunctionComponent* component = std::get_if<FunctionComponent>(&left)) {
-      return *component == std::get<FunctionComponent>(right);
+    if (const ComponentTag* component = std::get_if<ComponentTag>(&left)) {
+      return component->render == std::get<ComponentTag>(right).render;
     }
     return true;
   };
@@ -77,7 +79,7 @@ inline int find_matching_index(const VNode& child_vnode, const std::vector<VNode
       (matched && key == old_vnode->key && same_type(type, old_vnode->type))) {
     return skewed_index;
   } else if (should_search) {
-    int backward_index = skewed_index - 1;
+    int backward_index = std::min(skewed_index - 1, old_children_length - 1);
     int forward_index = skewed_index + 1;
     while (backward_index >= 0 || forward_index < old_children_length) {
       const int child_index = backward_index >= 0 ? backward_index-- : forward_index++;
@@ -121,8 +123,7 @@ inline DomNode construct_new_children_array(Host& host, VNode& new_parent_vnode,
     if (is_null(child_vnode)) continue;
 
     if (is_fragment(child_vnode)) {
-      child_vnode =
-          create_vnode(Fragment, Object{}, std::string(), {}, std::move(child_vnode.children));
+      child_vnode = Fragment(FragmentProps{.children = Children(std::move(child_vnode.children))});
     }
 
     const int skewed_index = i + skew;

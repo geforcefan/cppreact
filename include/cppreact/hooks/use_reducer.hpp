@@ -70,15 +70,12 @@ std::pair<T, std::function<void(Action)>> use_reducer_with(
     if (!component->has_scu_from_hooks) {
       component->has_scu_from_hooks = true;
 
-      auto previous_scu =
-          std::make_shared<std::function<bool(const Object&, const std::vector<VNode>&)>>(
-              component->should_component_update);
-      std::function<void(const Object&)> previous_cwu = component->component_will_update;
+      auto previous_scu = std::make_shared<std::function<bool(const Payload&)>>(
+          component->should_component_update);
+      std::function<void(const Payload&)> previous_cwu = component->component_will_update;
       std::weak_ptr<ComponentInstance> self_reference = component->weak_from_this();
 
-      auto update_hook_state = [self_reference, previous_scu](
-                                   const Object& next_props,
-                                   const std::vector<VNode>& next_children) -> bool {
+      auto update_hook_state = [self_reference, previous_scu](const Payload& next_props) -> bool {
         std::shared_ptr<ComponentInstance> self = self_reference.lock();
         if (!self || !self->hooks) return true;
 
@@ -93,7 +90,7 @@ std::pair<T, std::function<void(Action)>> use_reducer_with(
         }
 
         if (*previous_scu) {
-          const bool result = (*previous_scu)(next_props, next_children);
+          const bool result = (*previous_scu)(next_props);
           return updated_hook ? (result || should_update) : result;
         }
 
@@ -101,12 +98,12 @@ std::pair<T, std::function<void(Action)>> use_reducer_with(
       };
 
       component->component_will_update = [self_reference, previous_scu, previous_cwu,
-                                          update_hook_state](const Object& next_props) {
+                                          update_hook_state](const Payload& next_props) {
         std::shared_ptr<ComponentInstance> self = self_reference.lock();
         if (self && (self->flags & component_flag::force)) {
-          std::function<bool(const Object&, const std::vector<VNode>&)> saved = *previous_scu;
+          std::function<bool(const Payload&)> saved = *previous_scu;
           *previous_scu = nullptr;
-          update_hook_state(next_props, {});
+          update_hook_state(next_props);
           *previous_scu = saved;
         }
 
