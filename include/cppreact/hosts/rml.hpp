@@ -48,13 +48,13 @@ inline Key rml_key(int identifier) {
   case Rml::Input::KI_NUMPADENTER: return Key::Enter;
   case Rml::Input::KI_ESCAPE: return Key::Escape;
   case Rml::Input::KI_TAB: return Key::Tab;
-  case Rml::Input::KI_SPACE: return Key::Space;
+  case Rml::Input::KI_SPACE: return Key::SpaceBar;
   case Rml::Input::KI_DELETE: return Key::Delete;
-  case Rml::Input::KI_BACK: return Key::Backspace;
-  case Rml::Input::KI_LEFT: return Key::ArrowLeft;
-  case Rml::Input::KI_RIGHT: return Key::ArrowRight;
-  case Rml::Input::KI_UP: return Key::ArrowUp;
-  case Rml::Input::KI_DOWN: return Key::ArrowDown;
+  case Rml::Input::KI_BACK: return Key::BackSpace;
+  case Rml::Input::KI_LEFT: return Key::Left;
+  case Rml::Input::KI_RIGHT: return Key::Right;
+  case Rml::Input::KI_UP: return Key::Up;
+  case Rml::Input::KI_DOWN: return Key::Down;
   case Rml::Input::KI_LSHIFT:
   case Rml::Input::KI_RSHIFT: return Key::Shift;
   case Rml::Input::KI_LCONTROL:
@@ -62,7 +62,7 @@ inline Key rml_key(int identifier) {
   case Rml::Input::KI_LMENU:
   case Rml::Input::KI_RMENU: return Key::Alt;
   case Rml::Input::KI_LMETA:
-  case Rml::Input::KI_RMETA: return Key::Meta;
+  case Rml::Input::KI_RMETA: return Key::Command;
   case Rml::Input::KI_END: return Key::End;
   case Rml::Input::KI_HOME: return Key::Home;
   case Rml::Input::KI_PRIOR: return Key::PageUp;
@@ -93,16 +93,16 @@ inline Key rml_key(int identifier) {
   case Rml::Input::KI_X: return Key::X;
   case Rml::Input::KI_Y: return Key::Y;
   case Rml::Input::KI_Z: return Key::Z;
-  case Rml::Input::KI_0: return Key::Digit0;
-  case Rml::Input::KI_1: return Key::Digit1;
-  case Rml::Input::KI_2: return Key::Digit2;
-  case Rml::Input::KI_3: return Key::Digit3;
-  case Rml::Input::KI_4: return Key::Digit4;
-  case Rml::Input::KI_5: return Key::Digit5;
-  case Rml::Input::KI_6: return Key::Digit6;
-  case Rml::Input::KI_7: return Key::Digit7;
-  case Rml::Input::KI_8: return Key::Digit8;
-  case Rml::Input::KI_9: return Key::Digit9;
+  case Rml::Input::KI_0: return Key::Zero;
+  case Rml::Input::KI_1: return Key::One;
+  case Rml::Input::KI_2: return Key::Two;
+  case Rml::Input::KI_3: return Key::Three;
+  case Rml::Input::KI_4: return Key::Four;
+  case Rml::Input::KI_5: return Key::Five;
+  case Rml::Input::KI_6: return Key::Six;
+  case Rml::Input::KI_7: return Key::Seven;
+  case Rml::Input::KI_8: return Key::Eight;
+  case Rml::Input::KI_9: return Key::Nine;
   default: break;
   }
   return Key::Unknown;

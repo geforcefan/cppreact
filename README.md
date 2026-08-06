@@ -479,8 +479,8 @@ struct Event {
 };
 ```
 
-`key` is the pressed key as the `Key` enumeration: `Key::A` through `Key::Z`, `Key::Digit0`
-through `Key::Digit9`, `Key::Space`, `Key::Enter`, `Key::Escape`, `Key::Backspace`, `Key::Tab`,
+`key` is the pressed key as the `Key` enumeration: `Key::A` through `Key::Z`, `Key::Zero`
+through `Key::Nine`, `Key::SpaceBar`, `Key::Enter`, `Key::Escape`, `Key::BackSpace`, `Key::Tab`,
 `Key::Delete`, `Key::End`, `Key::Home`, `Key::PageUp`, `Key::PageDown`, the four arrow keys and
 the four modifiers. A key outside the enumeration is `Key::Unknown`. Typed characters are not
 keys, they arrive through the text channel (`data`).
