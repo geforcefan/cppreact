@@ -390,7 +390,7 @@ A component without a `ref` field attaches nothing, and its type says so.
 
 ```cpp
 use_document_event("key_down", [cancel](const Event& event) {
-  if (event.key == "escape") cancel();
+  if (event.key == Key::Escape) cancel();
 });
 ```
 
@@ -469,7 +469,7 @@ struct Event {
   double client_x, client_y;
   int button;
   bool shift_key, ctrl_key, alt_key, meta_key;
-  std::string key;
+  Key key;
   std::string value;
   double delta_x, delta_y;
   Payload native;
@@ -479,13 +479,11 @@ struct Event {
 };
 ```
 
-`key` is the pressed key:
-
-- bare characters: `"a"`, `"7"`
-- `"enter"`, `"escape"`, `"tab"`, `"delete"`, `"backspace"`
-- space is `" "`
-- `"arrow_left"`, `"arrow_right"`, `"arrow_up"`, `"arrow_down"`
-- `"shift"`, `"control"`, `"alt"`, `"meta"`
+`key` is the pressed key as the `Key` enumeration: `Key::A` through `Key::Z`, `Key::Digit0`
+through `Key::Digit9`, `Key::Space`, `Key::Enter`, `Key::Escape`, `Key::Backspace`, `Key::Tab`,
+`Key::Delete`, `Key::End`, `Key::Home`, `Key::PageUp`, `Key::PageDown`, the four arrow keys and
+the four modifiers. A key outside the enumeration is `Key::Unknown`. Typed characters are not
+keys, they arrive through the text channel (`data`).
 
 `value` is a control's value on change, and `native` carries the raw host event for anything the
 fields above do not cover. The rest of the host event surface is there too (`buttons`,

@@ -42,70 +42,70 @@ inline void register_native_tag(std::string tag) {
   native_tags().insert(std::move(tag));
 }
 
-inline std::string rml_key_name(int identifier) {
+inline Key rml_key(int identifier) {
   switch (identifier) {
   case Rml::Input::KI_RETURN:
-  case Rml::Input::KI_NUMPADENTER: return "enter";
-  case Rml::Input::KI_ESCAPE: return "escape";
-  case Rml::Input::KI_TAB: return "tab";
-  case Rml::Input::KI_SPACE: return " ";
-  case Rml::Input::KI_DELETE: return "delete";
-  case Rml::Input::KI_BACK: return "backspace";
-  case Rml::Input::KI_LEFT: return "arrow_left";
-  case Rml::Input::KI_RIGHT: return "arrow_right";
-  case Rml::Input::KI_UP: return "arrow_up";
-  case Rml::Input::KI_DOWN: return "arrow_down";
+  case Rml::Input::KI_NUMPADENTER: return Key::Enter;
+  case Rml::Input::KI_ESCAPE: return Key::Escape;
+  case Rml::Input::KI_TAB: return Key::Tab;
+  case Rml::Input::KI_SPACE: return Key::Space;
+  case Rml::Input::KI_DELETE: return Key::Delete;
+  case Rml::Input::KI_BACK: return Key::Backspace;
+  case Rml::Input::KI_LEFT: return Key::ArrowLeft;
+  case Rml::Input::KI_RIGHT: return Key::ArrowRight;
+  case Rml::Input::KI_UP: return Key::ArrowUp;
+  case Rml::Input::KI_DOWN: return Key::ArrowDown;
   case Rml::Input::KI_LSHIFT:
-  case Rml::Input::KI_RSHIFT: return "shift";
+  case Rml::Input::KI_RSHIFT: return Key::Shift;
   case Rml::Input::KI_LCONTROL:
-  case Rml::Input::KI_RCONTROL: return "control";
+  case Rml::Input::KI_RCONTROL: return Key::Control;
   case Rml::Input::KI_LMENU:
-  case Rml::Input::KI_RMENU: return "alt";
+  case Rml::Input::KI_RMENU: return Key::Alt;
   case Rml::Input::KI_LMETA:
-  case Rml::Input::KI_RMETA: return "meta";
-  case Rml::Input::KI_END: return "end";
-  case Rml::Input::KI_HOME: return "home";
-  case Rml::Input::KI_PRIOR: return "page_up";
-  case Rml::Input::KI_NEXT: return "page_down";
-  case Rml::Input::KI_A: return "a";
-  case Rml::Input::KI_B: return "b";
-  case Rml::Input::KI_C: return "c";
-  case Rml::Input::KI_D: return "d";
-  case Rml::Input::KI_E: return "e";
-  case Rml::Input::KI_F: return "f";
-  case Rml::Input::KI_G: return "g";
-  case Rml::Input::KI_H: return "h";
-  case Rml::Input::KI_I: return "i";
-  case Rml::Input::KI_J: return "j";
-  case Rml::Input::KI_K: return "k";
-  case Rml::Input::KI_L: return "l";
-  case Rml::Input::KI_M: return "m";
-  case Rml::Input::KI_N: return "n";
-  case Rml::Input::KI_O: return "o";
-  case Rml::Input::KI_P: return "p";
-  case Rml::Input::KI_Q: return "q";
-  case Rml::Input::KI_R: return "r";
-  case Rml::Input::KI_S: return "s";
-  case Rml::Input::KI_T: return "t";
-  case Rml::Input::KI_U: return "u";
-  case Rml::Input::KI_V: return "v";
-  case Rml::Input::KI_W: return "w";
-  case Rml::Input::KI_X: return "x";
-  case Rml::Input::KI_Y: return "y";
-  case Rml::Input::KI_Z: return "z";
-  case Rml::Input::KI_0: return "0";
-  case Rml::Input::KI_1: return "1";
-  case Rml::Input::KI_2: return "2";
-  case Rml::Input::KI_3: return "3";
-  case Rml::Input::KI_4: return "4";
-  case Rml::Input::KI_5: return "5";
-  case Rml::Input::KI_6: return "6";
-  case Rml::Input::KI_7: return "7";
-  case Rml::Input::KI_8: return "8";
-  case Rml::Input::KI_9: return "9";
+  case Rml::Input::KI_RMETA: return Key::Meta;
+  case Rml::Input::KI_END: return Key::End;
+  case Rml::Input::KI_HOME: return Key::Home;
+  case Rml::Input::KI_PRIOR: return Key::PageUp;
+  case Rml::Input::KI_NEXT: return Key::PageDown;
+  case Rml::Input::KI_A: return Key::A;
+  case Rml::Input::KI_B: return Key::B;
+  case Rml::Input::KI_C: return Key::C;
+  case Rml::Input::KI_D: return Key::D;
+  case Rml::Input::KI_E: return Key::E;
+  case Rml::Input::KI_F: return Key::F;
+  case Rml::Input::KI_G: return Key::G;
+  case Rml::Input::KI_H: return Key::H;
+  case Rml::Input::KI_I: return Key::I;
+  case Rml::Input::KI_J: return Key::J;
+  case Rml::Input::KI_K: return Key::K;
+  case Rml::Input::KI_L: return Key::L;
+  case Rml::Input::KI_M: return Key::M;
+  case Rml::Input::KI_N: return Key::N;
+  case Rml::Input::KI_O: return Key::O;
+  case Rml::Input::KI_P: return Key::P;
+  case Rml::Input::KI_Q: return Key::Q;
+  case Rml::Input::KI_R: return Key::R;
+  case Rml::Input::KI_S: return Key::S;
+  case Rml::Input::KI_T: return Key::T;
+  case Rml::Input::KI_U: return Key::U;
+  case Rml::Input::KI_V: return Key::V;
+  case Rml::Input::KI_W: return Key::W;
+  case Rml::Input::KI_X: return Key::X;
+  case Rml::Input::KI_Y: return Key::Y;
+  case Rml::Input::KI_Z: return Key::Z;
+  case Rml::Input::KI_0: return Key::Digit0;
+  case Rml::Input::KI_1: return Key::Digit1;
+  case Rml::Input::KI_2: return Key::Digit2;
+  case Rml::Input::KI_3: return Key::Digit3;
+  case Rml::Input::KI_4: return Key::Digit4;
+  case Rml::Input::KI_5: return Key::Digit5;
+  case Rml::Input::KI_6: return Key::Digit6;
+  case Rml::Input::KI_7: return Key::Digit7;
+  case Rml::Input::KI_8: return Key::Digit8;
+  case Rml::Input::KI_9: return Key::Digit9;
   default: break;
   }
-  return "";
+  return Key::Unknown;
 }
 
 inline Rml::String rml_element_tag(std::string_view tag) {
@@ -387,7 +387,7 @@ private:
       event.ctrl_key = native.GetParameter<int>("ctrl_key", 0) != 0;
       event.alt_key = native.GetParameter<int>("alt_key", 0) != 0;
       event.meta_key = native.GetParameter<int>("meta_key", 0) != 0;
-      event.key = rml_key_name(native.GetParameter<int>("key_identifier", 0));
+      event.key = rml_key(native.GetParameter<int>("key_identifier", 0));
       event.value = native.GetParameter<Rml::String>("value", Rml::String());
       event.delta_x = native.GetParameter<float>("wheel_delta_x", 0.0f);
       event.delta_y = native.GetParameter<float>("wheel_delta_y", 0.0f);

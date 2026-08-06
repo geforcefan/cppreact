@@ -142,8 +142,8 @@ TEST_CASE("event payload") {
         REQUIRE(seen.client_y == -4);
         REQUIRE((seen.shift_key && !seen.ctrl_key && !seen.meta_key));
 
-        renderer.dispatch_event(target, "key_down", Event{.ctrl_key = true, .key = "escape"});
-        REQUIRE((seen.type == "key_down" && seen.key == "escape" && seen.ctrl_key));
+        renderer.dispatch_event(target, "key_down", Event{.ctrl_key = true, .key = Key::Escape});
+        REQUIRE((seen.type == "key_down" && seen.key == Key::Escape && seen.ctrl_key));
 
         renderer.dispatch_event(target, "wheel", Event{.delta_y = 120});
         REQUIRE((seen.type == "wheel" && seen.delta_y == 120));

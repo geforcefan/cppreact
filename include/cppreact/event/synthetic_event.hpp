@@ -6,6 +6,7 @@
 
 #include "../host/dom.hpp"
 #include "../value/payload.hpp"
+#include "key.hpp"
 
 namespace cppreact {
 
@@ -39,7 +40,7 @@ struct SyntheticEvent {
   double movement_x = 0;
   double movement_y = 0;
 
-  std::string key{};
+  Key key = Key::Unknown;
   int location = 0;
   bool repeat = false;
 

@@ -80,7 +80,7 @@ const FunctionComponent App = [](const AppProps&) -> VNode {
     Input({.type = "text",
            .value = draft,
            .on_key_down = [=, todos = todos, draft = draft](const Event& event) {
-             if (event.key != "enter" || draft.empty()) return;
+             if (event.key != Key::Enter || draft.empty()) return;
              set_todos(create_todo(draft));
              set_draft("");
            },

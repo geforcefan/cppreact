@@ -55,7 +55,7 @@ static std::function<void()> toggle;
 static std::function<void()> bump;
 static StateSetter<std::string> set;
 static int unmount_calls = 0;
-static std::string document_key;
+static Key document_key = Key::Unknown;
 static std::function<void()> toggle_second;
 static StateSetter<DomNode> set_container;
 static StateSetter<bool> set_visible;
@@ -732,7 +732,7 @@ TEST_CASE("use_document_event") {
     Container scratch = renderer.create_container();
 
     SECTION("delivers a document event to the handler and unsubscribes on unmount") {
-        document_key.clear();
+        document_key = Key::Unknown;
 
         const FunctionComponent Listener = [](const HarnessProps&) -> VNode {
             use_document_event("key_down", [](const Event& event) { document_key = event.key; });
@@ -741,12 +741,12 @@ TEST_CASE("use_document_event") {
 
         render(Listener({}), scratch);
 
-        renderer.dispatch_event(renderer.document(), "key_down", Event{.key = "escape"});
-        REQUIRE(document_key == "escape");
+        renderer.dispatch_event(renderer.document(), "key_down", Event{.key = Key::Escape});
+        REQUIRE(document_key == Key::Escape);
 
         render(fragment(), scratch);
-        document_key.clear();
-        renderer.dispatch_event(renderer.document(), "key_down", Event{.key = "enter"});
-        REQUIRE(document_key == "");
+        document_key = Key::Unknown;
+        renderer.dispatch_event(renderer.document(), "key_down", Event{.key = Key::Enter});
+        REQUIRE(document_key == Key::Unknown);
     }
 }
