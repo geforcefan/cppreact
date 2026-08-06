@@ -108,6 +108,67 @@ inline Key rml_key(int identifier) {
   return Key::Unknown;
 }
 
+inline Rml::Input::KeyIdentifier rml_key_identifier(Key key) {
+  switch (key) {
+  case Key::SpaceBar: return Rml::Input::KI_SPACE;
+  case Key::Enter: return Rml::Input::KI_RETURN;
+  case Key::Escape: return Rml::Input::KI_ESCAPE;
+  case Key::BackSpace: return Rml::Input::KI_BACK;
+  case Key::Tab: return Rml::Input::KI_TAB;
+  case Key::Delete: return Rml::Input::KI_DELETE;
+  case Key::End: return Rml::Input::KI_END;
+  case Key::Home: return Rml::Input::KI_HOME;
+  case Key::PageUp: return Rml::Input::KI_PRIOR;
+  case Key::PageDown: return Rml::Input::KI_NEXT;
+  case Key::Left: return Rml::Input::KI_LEFT;
+  case Key::Right: return Rml::Input::KI_RIGHT;
+  case Key::Up: return Rml::Input::KI_UP;
+  case Key::Down: return Rml::Input::KI_DOWN;
+  case Key::Shift: return Rml::Input::KI_LSHIFT;
+  case Key::Control: return Rml::Input::KI_LCONTROL;
+  case Key::Alt: return Rml::Input::KI_LMENU;
+  case Key::Command: return Rml::Input::KI_LMETA;
+  case Key::A: return Rml::Input::KI_A;
+  case Key::B: return Rml::Input::KI_B;
+  case Key::C: return Rml::Input::KI_C;
+  case Key::D: return Rml::Input::KI_D;
+  case Key::E: return Rml::Input::KI_E;
+  case Key::F: return Rml::Input::KI_F;
+  case Key::G: return Rml::Input::KI_G;
+  case Key::H: return Rml::Input::KI_H;
+  case Key::I: return Rml::Input::KI_I;
+  case Key::J: return Rml::Input::KI_J;
+  case Key::K: return Rml::Input::KI_K;
+  case Key::L: return Rml::Input::KI_L;
+  case Key::M: return Rml::Input::KI_M;
+  case Key::N: return Rml::Input::KI_N;
+  case Key::O: return Rml::Input::KI_O;
+  case Key::P: return Rml::Input::KI_P;
+  case Key::Q: return Rml::Input::KI_Q;
+  case Key::R: return Rml::Input::KI_R;
+  case Key::S: return Rml::Input::KI_S;
+  case Key::T: return Rml::Input::KI_T;
+  case Key::U: return Rml::Input::KI_U;
+  case Key::V: return Rml::Input::KI_V;
+  case Key::W: return Rml::Input::KI_W;
+  case Key::X: return Rml::Input::KI_X;
+  case Key::Y: return Rml::Input::KI_Y;
+  case Key::Z: return Rml::Input::KI_Z;
+  case Key::Zero: return Rml::Input::KI_0;
+  case Key::One: return Rml::Input::KI_1;
+  case Key::Two: return Rml::Input::KI_2;
+  case Key::Three: return Rml::Input::KI_3;
+  case Key::Four: return Rml::Input::KI_4;
+  case Key::Five: return Rml::Input::KI_5;
+  case Key::Six: return Rml::Input::KI_6;
+  case Key::Seven: return Rml::Input::KI_7;
+  case Key::Eight: return Rml::Input::KI_8;
+  case Key::Nine: return Rml::Input::KI_9;
+  case Key::Unknown: return Rml::Input::KI_UNKNOWN;
+  }
+  return Rml::Input::KI_UNKNOWN;
+}
+
 inline Rml::String rml_element_tag(std::string_view tag) {
   static const std::unordered_map<std::string, Rml::String> mapping = {
       {"view", "view"}, {"text", "text"},         {"input", "input"},
@@ -375,10 +436,6 @@ private:
       SyntheticEvent event;
       DomNode target = host->get_handle(native.GetTargetElement());
       event.target = target != null_dom_node ? target : node;
-      event.current_target = node;
-      event.event_phase = event.target == node    ? event_phase::at_target
-                          : capture               ? event_phase::capturing
-                                                  : event_phase::bubbling;
       event.type = type;
       event.client_x = native.GetParameter<float>("mouse_x", 0.0f);
       event.client_y = native.GetParameter<float>("mouse_y", 0.0f);
@@ -389,7 +446,6 @@ private:
       event.meta_key = native.GetParameter<int>("meta_key", 0) != 0;
       event.key = rml_key(native.GetParameter<int>("key_identifier", 0));
       event.value = native.GetParameter<Rml::String>("value", Rml::String());
-      event.delta_x = native.GetParameter<float>("wheel_delta_x", 0.0f);
       event.delta_y = native.GetParameter<float>("wheel_delta_y", 0.0f);
       event.native_stop_propagation = [&native] { native.StopPropagation(); };
       current(event);

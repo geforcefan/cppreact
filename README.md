@@ -470,9 +470,8 @@ struct Event {
   int button;
   bool shift_key, ctrl_key, alt_key, meta_key;
   Key key;
-  std::string value;
-  double delta_x, delta_y;
-  Payload native;
+  std::string data, value;
+  double delta_y;
 
   void prevent_default() const;
   void stop_propagation() const;
@@ -485,10 +484,9 @@ through `Key::Nine`, `Key::SpaceBar`, `Key::Enter`, `Key::Escape`, `Key::BackSpa
 the four modifiers. A key outside the enumeration is `Key::Unknown`. Typed characters are not
 keys, they arrive through the text channel (`data`).
 
-`value` is a control's value on change, and `native` carries the raw host event for anything the
-fields above do not cover. The rest of the host event surface is there too (`buttons`,
-`movement_x`, `location`, `repeat`, `delta_z`, `delta_mode`, `data`, `related_target`,
-`event_phase`, `get_modifier_state`), a host fills what it can.
+`value` is a control's value on change, `data` carries the typed character on the text event,
+and `movement_x`/`movement_y` carry relative pointer motion. Every field has a host that fills
+it and a consumer that reads it, there is no speculative event surface.
 
 ```cpp
 EventCallback zoom = [set_scale](const Event& event) {

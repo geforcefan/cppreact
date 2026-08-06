@@ -260,10 +260,6 @@ private:
                 DispatchPhase phase) {
     auto entry = nodes[node].listeners.find(type);
     if (entry == nodes[node].listeners.end()) return;
-    event.current_target = node;
-    event.event_phase = phase == DispatchPhase::capture  ? event_phase::capturing
-                        : phase == DispatchPhase::target ? event_phase::at_target
-                                                         : event_phase::bubbling;
     std::map<EventListenerToken, Listener> current = entry->second;
     for (const auto& [token, listener] : current) {
       if (!listener.listener) continue;
