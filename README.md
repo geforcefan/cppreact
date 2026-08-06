@@ -117,7 +117,10 @@ const FunctionComponent App = [](const AppProps&) -> VNode {
 ```
 
 Children are a field like any other. Declare `Children children{};` and the component decides
-where they land:
+where they land. A `std::vector<VNode>` is itself a valid child anywhere a `VNode` is
+expected, and it renders as a fragment, exactly like an array child in React; `map(items,
+transform)` therefore drops straight into a children list or a `fragment(...)` call without
+wrapping:
 
 ```cpp
 struct CardProps {
@@ -207,6 +210,21 @@ Call them at the top of a component, same order every render. Dependencies are a
 - `{a, b}` reruns when one changed
 - `{}` runs once, on mount
 - no argument runs every render
+
+What goes into the list, cheapest form first:
+
+- numbers, bools, and strings go in bare: `{threshold, uri, enabled}`. The `Value` variant holds
+  them inline and compares by value, no allocation.
+- small structs decompose into their scalar components: `{position.x, position.y, position.z}`.
+- `PointerIdentity{pointer}` compares by address, not by pointee value. The dependency changes
+  exactly when a different instance arrives; mutating the pointed-to data is invisible to it.
+  This is the reference-identity comparison JavaScript dependency arrays get from `Object.is`,
+  and the right form for heavy immutable data where value comparison would cost more than the
+  work the hook guards: `{PointerIdentity{geometry.get()}}`.
+- `make_payload(value)` wraps any equality-comparable struct and compares by value. It
+  heap-allocates on every render, so it is the last resort, for a struct that must compare by
+  value and cannot decompose. A non-comparable payload never equals anything and reruns the
+  hook every render.
 
 ### use_state
 
@@ -471,7 +489,7 @@ struct Event {
 
 `value` is a control's value on change, and `native` carries the raw host event for anything the
 fields above do not cover. The rest of the host event surface is there too (`buttons`,
-`movement_x`, `code`, `location`, `repeat`, `delta_z`, `delta_mode`, `data`, `related_target`,
+`movement_x`, `location`, `repeat`, `delta_z`, `delta_mode`, `data`, `related_target`,
 `event_phase`, `get_modifier_state`), a host fills what it can.
 
 ```cpp

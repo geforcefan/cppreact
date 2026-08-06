@@ -6,6 +6,7 @@
 
 #include "component/fragment.hpp"
 #include "diff/diff.hpp"
+#include "visibility.hpp"
 
 namespace cppreact {
 
@@ -17,7 +18,7 @@ struct Container {
 
 namespace detail {
 
-inline thread_local std::function<void()> passive_effects_flush{};
+inline thread_local CPPREACT_VISIBLE std::function<void()> passive_effects_flush{};
 
 }
 

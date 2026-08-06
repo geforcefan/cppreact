@@ -40,7 +40,6 @@ struct SyntheticEvent {
   double movement_y = 0;
 
   std::string key{};
-  std::string code{};
   int location = 0;
   bool repeat = false;
 

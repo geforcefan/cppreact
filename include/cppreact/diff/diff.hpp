@@ -235,7 +235,7 @@ inline void unmount(Host& host, VNode& vnode, bool skip_remove) {
   }
 
   if (vnode.dom != null_dom_node) {
-    detail::clear_event_listeners(vnode.dom);
+    detail::clear_event_listeners(host, vnode.dom);
   }
 
   vnode.dom = null_dom_node;

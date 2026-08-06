@@ -8,13 +8,14 @@
 #include "flags.hpp"
 #include "../diff/children.hpp"
 #include "../diff/diff.hpp"
+#include "../visibility.hpp"
 #include "../vnode/clone.hpp"
 
 namespace cppreact {
 
 namespace detail {
 
-inline thread_local std::vector<std::shared_ptr<ComponentInstance>> rerender_queue{};
+inline thread_local CPPREACT_VISIBLE std::vector<std::shared_ptr<ComponentInstance>> rerender_queue{};
 
 }
 

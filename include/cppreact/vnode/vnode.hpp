@@ -71,6 +71,7 @@ struct VNode {
   VNode(std::nullptr_t) : type(NullTag{}) {}
   VNode(const char* value) : type(TextTag{std::string(value)}) {}
   VNode(std::string value) : type(TextTag{std::move(value)}) {}
+  VNode(std::vector<VNode> nodes) : children(std::move(nodes)) {}
   template <class Number,
             std::enable_if_t<std::is_arithmetic_v<Number> && !std::is_same_v<Number, bool>, int> = 0>
   VNode(Number value) : type(TextTag{detail::number_to_text(static_cast<double>(value))}) {}

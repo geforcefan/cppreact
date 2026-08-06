@@ -70,6 +70,29 @@ TEST_CASE("Fragment") {
         REQUIRE(renderer.inner_html() == "hello <text>world</text>");
     }
 
+    SECTION("a vector child is a fragment, like a react array child") {
+        std::vector<VNode> items;
+        items.push_back(Text({.children = {"a"}}));
+        items.push_back(Text({.children = {"b"}}));
+        render(fragment("head ", std::move(items), " tail"), scratch);
+
+        REQUIRE(renderer.inner_html() == "head <text>a</text><text>b</text> tail");
+    }
+
+    SECTION("keyed children reorder through a vector child") {
+        std::vector<VNode> forward;
+        forward.push_back(Text({.key = "a", .children = {"a"}}));
+        forward.push_back(Text({.key = "b", .children = {"b"}}));
+        render(fragment("head ", std::move(forward)), scratch);
+        REQUIRE(renderer.inner_html() == "head <text>a</text><text>b</text>");
+
+        std::vector<VNode> reversed;
+        reversed.push_back(Text({.key = "b", .children = {"b"}}));
+        reversed.push_back(Text({.key = "a", .children = {"a"}}));
+        render(fragment("head ", std::move(reversed)), scratch);
+        REQUIRE(renderer.inner_html() == "head <text>b</text><text>a</text>");
+    }
+
     SECTION("should just render children for fragments") {
         const FunctionComponent TestComponent = [](const HarnessProps&) -> VNode {
             return fragment(View({.children = {"Child1"}}), View({.children = {"Child2"}}));

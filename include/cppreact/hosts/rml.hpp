@@ -57,12 +57,54 @@ inline std::string rml_key_name(int identifier) {
   case Rml::Input::KI_DOWN: return "arrow_down";
   case Rml::Input::KI_LSHIFT:
   case Rml::Input::KI_RSHIFT: return "shift";
+  case Rml::Input::KI_LCONTROL:
+  case Rml::Input::KI_RCONTROL: return "control";
+  case Rml::Input::KI_LMENU:
+  case Rml::Input::KI_RMENU: return "alt";
+  case Rml::Input::KI_LMETA:
+  case Rml::Input::KI_RMETA: return "meta";
+  case Rml::Input::KI_END: return "end";
+  case Rml::Input::KI_HOME: return "home";
+  case Rml::Input::KI_PRIOR: return "page_up";
+  case Rml::Input::KI_NEXT: return "page_down";
+  case Rml::Input::KI_A: return "a";
+  case Rml::Input::KI_B: return "b";
+  case Rml::Input::KI_C: return "c";
+  case Rml::Input::KI_D: return "d";
+  case Rml::Input::KI_E: return "e";
+  case Rml::Input::KI_F: return "f";
+  case Rml::Input::KI_G: return "g";
+  case Rml::Input::KI_H: return "h";
+  case Rml::Input::KI_I: return "i";
+  case Rml::Input::KI_J: return "j";
+  case Rml::Input::KI_K: return "k";
+  case Rml::Input::KI_L: return "l";
+  case Rml::Input::KI_M: return "m";
+  case Rml::Input::KI_N: return "n";
+  case Rml::Input::KI_O: return "o";
+  case Rml::Input::KI_P: return "p";
+  case Rml::Input::KI_Q: return "q";
+  case Rml::Input::KI_R: return "r";
+  case Rml::Input::KI_S: return "s";
+  case Rml::Input::KI_T: return "t";
+  case Rml::Input::KI_U: return "u";
+  case Rml::Input::KI_V: return "v";
+  case Rml::Input::KI_W: return "w";
+  case Rml::Input::KI_X: return "x";
+  case Rml::Input::KI_Y: return "y";
+  case Rml::Input::KI_Z: return "z";
+  case Rml::Input::KI_0: return "0";
+  case Rml::Input::KI_1: return "1";
+  case Rml::Input::KI_2: return "2";
+  case Rml::Input::KI_3: return "3";
+  case Rml::Input::KI_4: return "4";
+  case Rml::Input::KI_5: return "5";
+  case Rml::Input::KI_6: return "6";
+  case Rml::Input::KI_7: return "7";
+  case Rml::Input::KI_8: return "8";
+  case Rml::Input::KI_9: return "9";
   default: break;
   }
-  if (identifier >= Rml::Input::KI_A && identifier <= Rml::Input::KI_Z)
-    return std::string(1, static_cast<char>('a' + (identifier - Rml::Input::KI_A)));
-  if (identifier >= Rml::Input::KI_0 && identifier <= Rml::Input::KI_9)
-    return std::string(1, static_cast<char>('0' + (identifier - Rml::Input::KI_0)));
   return "";
 }
 

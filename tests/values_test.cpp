@@ -51,6 +51,15 @@ TEST_CASE("values") {
         REQUIRE_FALSE(values_equal(Value{std::string("steel")}, Value{"wood"}));
     }
 
+    SECTION("pointer identities compare by address") {
+        const int first = 0;
+        const int second = 0;
+        REQUIRE(values_equal(Value{PointerIdentity{&first}}, Value{PointerIdentity{&first}}));
+        REQUIRE_FALSE(values_equal(Value{PointerIdentity{&first}}, Value{PointerIdentity{&second}}));
+        REQUIRE(values_equal(Value{PointerIdentity{}}, Value{PointerIdentity{}}));
+        REQUIRE_FALSE(values_equal(Value{PointerIdentity{&first}}, Value{PointerIdentity{}}));
+    }
+
     SECTION("comparable payloads compare by value") {
         Payload first = make_payload(7);
         Payload second = make_payload(7);

@@ -129,8 +129,8 @@ TEST_CASE("event payload") {
     SECTION("delivers position, modifiers, key and wheel data to the handler") {
         render(View({.class_name = "target",
                      .on_mouse_move = [](const Event& event) { seen = event; },
-                     .on_key_down = [](const Event& event) { seen = event; },
-                     .on_wheel = [](const Event& event) { seen = event; }}),
+                     .on_wheel = [](const Event& event) { seen = event; },
+                     .on_key_down = [](const Event& event) { seen = event; }}),
                scratch);
         DomNode target = renderer.find_first("view");
 

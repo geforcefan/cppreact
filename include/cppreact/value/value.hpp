@@ -10,8 +10,13 @@
 
 namespace cppreact {
 
+struct PointerIdentity {
+  const void* pointer = nullptr;
+  bool operator==(const PointerIdentity&) const = default;
+};
+
 using Value = std::variant<std::monostate, bool, double, std::string, Callback,
-                           ReferenceObject, Payload>;
+                           ReferenceObject, PointerIdentity, Payload>;
 
 inline bool values_equal(const Value& left, const Value& right) {
   if (left.index() != right.index()) return false;

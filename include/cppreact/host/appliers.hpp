@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "../vnode/options.hpp"
 #include "../host/host.hpp"
@@ -21,8 +22,11 @@ struct EventListenerEntry {
   EventListenerToken token = null_event_listener;
 };
 
-inline std::map<DomNode, std::map<std::string, EventListenerEntry>>& event_listeners() {
-  static thread_local std::map<DomNode, std::map<std::string, EventListenerEntry>> listeners{};
+using EventListenerKey = std::pair<Host*, DomNode>;
+
+inline std::map<EventListenerKey, std::map<std::string, EventListenerEntry>>& event_listeners() {
+  static thread_local std::map<EventListenerKey, std::map<std::string, EventListenerEntry>>
+      listeners{};
   return listeners;
 }
 
@@ -31,7 +35,9 @@ inline std::uint64_t& event_clock() {
   return clock;
 }
 
-inline void clear_event_listeners(DomNode node) { event_listeners().erase(node); }
+inline void clear_event_listeners(Host& host, DomNode node) {
+  event_listeners().erase({&host, node});
+}
 
 }
 
@@ -45,7 +51,8 @@ inline void apply_event_handler_to_dom(Host& host, DomNode dom, const std::strin
 
   host.set_event_handler(dom, listener_name, has_next ? next : EventCallback{});
 
-  std::map<std::string, detail::EventListenerEntry>& listeners = detail::event_listeners()[dom];
+  std::map<std::string, detail::EventListenerEntry>& listeners =
+      detail::event_listeners()[{&host, dom}];
 
   if (has_next) {
     detail::EventListenerEntry& entry = listeners[listener_name];
@@ -56,7 +63,7 @@ inline void apply_event_handler_to_dom(Host& host, DomNode dom, const std::strin
           dom, event_type,
           [host_pointer, dom, listener_name](SyntheticEvent& event) {
             auto& nodes = detail::event_listeners();
-            const auto node_entry = nodes.find(dom);
+            const auto node_entry = nodes.find({host_pointer, dom});
             if (node_entry == nodes.end()) return;
             const auto listener_entry = node_entry->second.find(listener_name);
             if (listener_entry == node_entry->second.end()) return;
@@ -83,7 +90,7 @@ inline void apply_event_handler_to_dom(Host& host, DomNode dom, const std::strin
       host.remove_event_listener(dom, event_type, entry->second.token);
       listeners.erase(entry);
     }
-    if (listeners.empty()) detail::event_listeners().erase(dom);
+    if (listeners.empty()) detail::event_listeners().erase({&host, dom});
   }
 }
 
@@ -164,10 +171,10 @@ void apply_event_handlers_to_dom(Host& host, DomNode dom, const Properties& next
   CPPREACT_APPLY_EVENT(on_double_click_capture, "double_click", true)
   CPPREACT_APPLY_EVENT(on_mouse_down, "mouse_down", false)
   CPPREACT_APPLY_EVENT(on_mouse_down_capture, "mouse_down", true)
-  CPPREACT_APPLY_EVENT(on_mouse_up, "mouse_up", false)
-  CPPREACT_APPLY_EVENT(on_mouse_up_capture, "mouse_up", true)
   CPPREACT_APPLY_EVENT(on_mouse_move, "mouse_move", false)
   CPPREACT_APPLY_EVENT(on_mouse_move_capture, "mouse_move", true)
+  CPPREACT_APPLY_EVENT(on_mouse_up, "mouse_up", false)
+  CPPREACT_APPLY_EVENT(on_mouse_up_capture, "mouse_up", true)
   CPPREACT_APPLY_EVENT(on_mouse_over, "mouse_over", false)
   CPPREACT_APPLY_EVENT(on_mouse_over_capture, "mouse_over", true)
   CPPREACT_APPLY_EVENT(on_mouse_out, "mouse_out", false)

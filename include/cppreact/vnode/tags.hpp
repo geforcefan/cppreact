@@ -18,10 +18,10 @@ namespace cppreact::tags {
   EventCallback on_double_click_capture{};                                               \
   EventCallback on_mouse_down{};                                                         \
   EventCallback on_mouse_down_capture{};                                                 \
-  EventCallback on_mouse_up{};                                                           \
-  EventCallback on_mouse_up_capture{};                                                   \
   EventCallback on_mouse_move{};                                                         \
   EventCallback on_mouse_move_capture{};                                                 \
+  EventCallback on_mouse_up{};                                                           \
+  EventCallback on_mouse_up_capture{};                                                   \
   EventCallback on_mouse_over{};                                                         \
   EventCallback on_mouse_over_capture{};                                                 \
   EventCallback on_mouse_out{};                                                          \

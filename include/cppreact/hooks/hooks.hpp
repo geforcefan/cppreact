@@ -16,6 +16,7 @@
 #include "../context/create_context.hpp"
 #include "../diff/diff.hpp"
 #include "../render.hpp"
+#include "../visibility.hpp"
 
 namespace cppreact {
 
@@ -72,7 +73,7 @@ inline thread_local std::size_t current_index = 0;
 inline thread_local ComponentInstance* current_component = nullptr;
 inline thread_local ComponentInstance* previous_component = nullptr;
 inline thread_local int current_hook = 0;
-inline thread_local std::vector<std::weak_ptr<ComponentInstance>> passive_effects{};
+inline thread_local CPPREACT_VISIBLE std::vector<std::weak_ptr<ComponentInstance>> passive_effects{};
 
 inline HookList& hooks_for(ComponentInstance& component) {
   if (!component.hooks) {
@@ -290,5 +291,6 @@ inline HookState& get_hook_state(std::size_t index, int type) {
 #include "use_callback.hpp"
 #include "use_ref.hpp"
 #include "use_context.hpp"
+#include "use_host.hpp"
 #include "use_sync_external_store.hpp"
 #include "use_document_event.hpp"
