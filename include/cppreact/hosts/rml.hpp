@@ -446,6 +446,7 @@ private:
       event.meta_key = native.GetParameter<int>("meta_key", 0) != 0;
       event.key = rml_key(native.GetParameter<int>("key_identifier", 0));
       event.value = native.GetParameter<Rml::String>("value", Rml::String());
+      event.delta_x = native.GetParameter<float>("wheel_delta_x", 0.0f);
       event.delta_y = native.GetParameter<float>("wheel_delta_y", 0.0f);
       event.native_stop_propagation = [&native] { native.StopPropagation(); };
       current(event);

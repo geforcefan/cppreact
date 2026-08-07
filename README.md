@@ -471,7 +471,8 @@ struct Event {
   bool shift_key, ctrl_key, alt_key, meta_key;
   Key key;
   std::string data, value;
-  double delta_y;
+  double delta_x, delta_y, delta_z;
+  int delta_mode;
 
   void prevent_default() const;
   void stop_propagation() const;

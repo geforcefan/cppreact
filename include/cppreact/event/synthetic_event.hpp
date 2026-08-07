@@ -13,7 +13,6 @@ struct SyntheticEvent {
   std::string type{};
   DomNode target = null_dom_node;
 
-
   double client_x = 0;
   double client_y = 0;
   bool ctrl_key = false;
@@ -26,7 +25,10 @@ struct SyntheticEvent {
 
   Key key = Key::Unknown;
 
+  double delta_x = 0;
   double delta_y = 0;
+  double delta_z = 0;
+  int delta_mode = 0;
 
   std::string data{};
   std::string value{};
